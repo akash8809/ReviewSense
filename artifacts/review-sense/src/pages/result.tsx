@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { SidebarLayout } from "@/components/sidebar-layout";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { 
   useGetAnalysis, 
   getGetAnalysisQueryKey,
@@ -9,14 +9,15 @@ import {
   Analysis,
   Review
 } from "@workspace/api-client-react";
+import { customFetch } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 import { 
-  Activity, Star, TrendingUp, TrendingDown, Minus, Download, ArrowLeft,
-  AlertTriangle, Brain, Target, MessageSquare, Briefcase,
-  FileText
+  Activity, Star, TrendingUp, TrendingDown, Download, ArrowLeft,
+  Brain, Target, Briefcase, FileText, Share2, RefreshCw
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { 
@@ -27,6 +28,10 @@ import {
 export default function ResultPage() {
   const { id } = useParams<{ id: string }>();
   const analysisId = parseInt(id, 10);
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [sharing, setSharing] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
 
   const { data: analysis, isLoading: analysisLoading } = useGetAnalysis(analysisId, {
     query: { queryKey: getGetAnalysisQueryKey(analysisId) }
@@ -35,6 +40,35 @@ export default function ResultPage() {
   const { data: reviewsData, isLoading: reviewsLoading } = useGetAnalysisReviews(analysisId, {
     query: { queryKey: getGetAnalysisReviewsQueryKey(analysisId) }
   });
+
+  const handleShare = async () => {
+    setSharing(true);
+    try {
+      const data = await customFetch<{ token: string }>(`/api/analyses/${analysisId}/share`, { method: "POST" });
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const url = `${window.location.origin}${base}/shared/${data.token}`;
+      await navigator.clipboard.writeText(url);
+      toast({ title: "Link copied!", description: "Share this link — anyone with it can view this report." });
+    } catch {
+      toast({ variant: "destructive", title: "Error", description: "Failed to generate share link." });
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleReanalyze = async () => {
+    if (!confirm("This will run a fresh analysis on the same product URL and create a new result. Continue?")) return;
+    setReanalyzing(true);
+    try {
+      const newAnalysis = await customFetch<{ id: number }>(`/api/analyses/${analysisId}/reanalyze`, { method: "POST" });
+      toast({ title: "Re-analysis started!", description: "Redirecting to your new result…" });
+      setLocation(`/result/${newAnalysis.id}`);
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Cannot re-analyze", description: e.message || "This analysis has no product URL." });
+    } finally {
+      setReanalyzing(false);
+    }
+  };
 
   const handlePrint = async () => {
     try {
@@ -147,10 +181,18 @@ export default function ResultPage() {
           <Button variant="ghost" className="text-muted-foreground" asChild>
             <Link href="/dashboard"><ArrowLeft className="w-4 h-4 mr-2" /> Back</Link>
           </Button>
-          <div className="flex gap-3">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={handleCsvExport} disabled={reviewsLoading} data-testid="btn-export-csv">
-              <Download className="w-4 h-4 mr-2" /> Export CSV
+              <Download className="w-4 h-4 mr-2" /> CSV
             </Button>
+            <Button variant="outline" onClick={handleShare} disabled={sharing} data-testid="btn-share">
+              <Share2 className="w-4 h-4 mr-2" /> {sharing ? "Copying…" : "Share Link"}
+            </Button>
+            {analysis?.productUrl && (
+              <Button variant="outline" onClick={handleReanalyze} disabled={reanalyzing}>
+                <RefreshCw className={`w-4 h-4 mr-2 ${reanalyzing ? "animate-spin" : ""}`} /> Re-analyze
+              </Button>
+            )}
             <Button onClick={handlePrint} className="data-glow" data-testid="btn-export-pdf">
               <FileText className="w-4 h-4 mr-2" /> Export PDF
             </Button>

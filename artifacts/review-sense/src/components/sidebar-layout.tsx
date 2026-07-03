@@ -1,8 +1,8 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { useLogout } from "@workspace/api-client-react";
-import { LayoutDashboard, Search, History, Settings, Users, LogOut, Activity } from "lucide-react";
+import { useLogout, customFetch } from "@workspace/api-client-react";
+import { LayoutDashboard, Search, History, Settings, Users, LogOut, Activity, GitCompareArrows } from "lucide-react";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 
@@ -20,9 +20,17 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   if (!isAuthenticated || !user) return null;
 
+  const [usage, setUsage] = useState<{ used: number; limit: number } | null>(null);
+  useEffect(() => {
+    customFetch<{ used: number; limit: number }>("/api/dashboard/usage")
+      .then(setUsage)
+      .catch(() => {});
+  }, []);
+
   const navItems = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "Analyze", href: "/analyze", icon: Search },
+    { label: "Compare", href: "/compare", icon: GitCompareArrows },
     { label: "History", href: "/history", icon: History },
     { label: "Settings", href: "/settings", icon: Settings },
   ];
@@ -66,6 +74,25 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             );
           })}
         </div>
+
+        {/* Free tier usage */}
+        {usage && (
+          <div className="px-4 pb-3">
+            <div className="rounded-lg border border-border/50 bg-muted/30 p-3 space-y-1.5">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Free tier</span>
+                <span className="font-mono font-medium">{usage.used} / {usage.limit}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${usage.used / usage.limit > 0.8 ? "bg-destructive" : "bg-primary"}`}
+                  style={{ width: `${Math.min(100, (usage.used / usage.limit) * 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">{usage.limit - usage.used} analyses left this month</p>
+            </div>
+          </div>
+        )}
 
         <div className="p-4 border-t border-border/50">
           <div className="flex items-center gap-3 mb-4">
