@@ -220,6 +220,80 @@ Respond with a JSON object:
   };
 }
 
+/** Strip HTML tags and collapse whitespace to get readable plain text. */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/** Pull the most useful text sections out of raw page HTML. */
+function extractPageText(html: string, maxChars = 8000): string {
+  // Grab <title>
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleMatch ? stripHtml(titleMatch[1]) : "";
+
+  // Grab meta description
+  const metaMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+    ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+  const meta = metaMatch ? metaMatch[1] : "";
+
+  // Grab Open Graph title / description (richer on product pages)
+  const ogTitle = (html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ?? [])[1] ?? "";
+  const ogDesc  = (html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i) ?? [])[1] ?? "";
+  const ogImage = (html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ?? [])[1] ?? "";
+
+  // Strip the full page body and take a chunk
+  const bodyText = stripHtml(html).slice(0, maxChars);
+
+  const parts = [
+    title && `PAGE TITLE: ${title}`,
+    ogTitle && `OG TITLE: ${ogTitle}`,
+    meta && `META DESC: ${meta}`,
+    ogDesc && `OG DESC: ${ogDesc}`,
+    `PAGE TEXT:\n${bodyText}`,
+  ].filter(Boolean);
+
+  return { text: parts.join("\n\n"), imageUrl: ogImage };
+}
+
+/** Attempt to fetch the product page with a realistic browser User-Agent. */
+async function fetchPageHtml(url: string): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+          "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+      },
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("text/html")) return null;
+    return await res.text();
+  } catch (e) {
+    logger.warn({ err: e, url }, "Page fetch failed");
+    return null;
+  }
+}
+
 export async function extractProductInfo(url: string): Promise<{
   productName: string;
   productBrand?: string;
@@ -228,26 +302,75 @@ export async function extractProductInfo(url: string): Promise<{
   productPrice?: string;
   sampleReviews: ReviewItem[];
 }> {
-  // We can't scrape real URLs, but extract info from the URL and generate context
-  const prompt = `Given this e-commerce product URL: ${url}
+  // 1. Try to actually fetch the page so GPT gets real content
+  const html = await fetchPageHtml(url);
+  let pageContext = "";
+  let scrapedImageUrl = "";
 
-Extract or infer:
-1. A realistic product name based on the URL structure (look for ASIN codes, product slugs, etc.)
-2. Likely brand/retailer
-3. Product category
-4. A realistic price range
+  if (html) {
+    const extracted = extractPageText(html);
+    pageContext = extracted.text;
+    scrapedImageUrl = extracted.imageUrl ?? "";
+    logger.info({ url, chars: pageContext.length }, "Scraped product page");
+  } else {
+    logger.warn({ url }, "Could not fetch page — falling back to URL-only inference");
+  }
 
-Also generate 15-20 realistic customer reviews for this type of product — mix of positive, negative, and neutral. Make them sound genuine with varied lengths.
+  // 2. Ask GPT to parse the real page text (or fall back to URL inference)
+  const prompt = html
+    ? `You are a product data extractor. A customer submitted this e-commerce URL for review analysis:
+URL: ${url}
+
+Below is the actual page content we scraped from that URL. Use it to extract accurate product information.
+
+=== SCRAPED PAGE CONTENT ===
+${pageContext}
+===========================
+
+From the scraped content above, extract:
+- The exact product name as listed on the page
+- The brand/manufacturer
+- The product category
+- The price (if visible)
+
+Then generate 20 realistic, DIVERSE customer reviews SPECIFIC to this exact product — its actual features, common complaints, use cases. 
+Reviews must reflect the REAL product above (not a generic product).
+Mix: ~60% positive (4-5★), ~20% neutral (3★), ~20% negative (1-2★).
+Vary length from 1 sentence to 4 sentences. Make them sound like genuine human reviews.
+
+Respond with JSON:
+{
+  "productName": "exact product name from the page",
+  "productBrand": "brand/manufacturer",
+  "productCategory": "category",
+  "productPrice": "$XX.XX or null",
+  "reviews": [
+    {"review": "review text here", "rating": 5, "date": "2024-06-15"},
+    ...20 items...
+  ]
+}`
+    : `You are a product data extractor. Extract information from this e-commerce product URL:
+URL: ${url}
+
+The URL itself contains clues (product slug, ASIN, keywords). Use them carefully to infer:
+- Product name (decode the slug/ASIN as best you can)
+- Brand
+- Category
+- Approximate price range
+
+Then generate 20 realistic, DIVERSE customer reviews SPECIFIC to the inferred product.
+The reviews MUST be tailored to this specific product's likely features, problems, and use cases.
+Mix: ~60% positive (4-5★), ~20% neutral (3★), ~20% negative (1-2★).
 
 Respond with JSON:
 {
   "productName": "...",
   "productBrand": "...",
   "productCategory": "...",
-  "productPrice": "$XX.XX",
+  "productPrice": "$XX.XX or null",
   "reviews": [
-    {"review": "...", "rating": 4, "date": "2024-03-15"},
-    ...
+    {"review": "...", "rating": 4, "date": "2024-05-10"},
+    ...20 items...
   ]
 }`;
 
@@ -256,14 +379,15 @@ Respond with JSON:
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
-      max_tokens: 3000,
+      max_tokens: 4000,
     });
     const data = JSON.parse(response.choices[0]?.message?.content ?? "{}");
     return {
-      productName: data.productName ?? "Unknown Product",
-      productBrand: data.productBrand,
-      productCategory: data.productCategory,
-      productPrice: data.productPrice,
+      productName: data.productName ?? new URL(url).hostname + " Product",
+      productBrand: data.productBrand ?? undefined,
+      productImageUrl: scrapedImageUrl || undefined,
+      productCategory: data.productCategory ?? undefined,
+      productPrice: data.productPrice ?? undefined,
       sampleReviews: Array.isArray(data.reviews) ? data.reviews : [],
     };
   } catch (e) {
