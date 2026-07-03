@@ -351,11 +351,25 @@ export async function customFetch<T = unknown>(
 
   // Attach bearer token when an auth getter is configured and no
   // Authorization header has been explicitly provided.
+  // Scope token injection to same-origin /api/ paths only to prevent leaking
+  // tokens to external URLs.
+  const requestUrl = resolveUrl(input);
+  const isSameOriginApi =
+    requestUrl.startsWith("/api/") ||
+    requestUrl.startsWith("/api") ||
+    (typeof location !== "undefined" &&
+      (requestUrl.startsWith(location.origin + "/api") ||
+        requestUrl.startsWith(location.origin + "/api/")));
+
+  let token: string | null = null;
   if (_authTokenGetter && !headers.has("authorization")) {
-    const token = await _authTokenGetter();
-    if (token) {
-      headers.set("authorization", `Bearer ${token}`);
-    }
+    token = await _authTokenGetter();
+  }
+  if (!token && isSameOriginApi && typeof localStorage !== "undefined") {
+    token = localStorage.getItem("rs_token");
+  }
+  if (token && isSameOriginApi && !headers.has("authorization")) {
+    headers.set("authorization", `Bearer ${token}`);
   }
 
   const requestInfo = { method, url: resolveUrl(input) };

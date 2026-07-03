@@ -1,0 +1,1 @@
+- [ReviewSense AI stack](reviewsense-stack.md) — Full-stack AI review analyzer: React+Vite frontend, Express API with OpenAI, PostgreSQL/Drizzle, JWT auth via SESSION_SECRET.

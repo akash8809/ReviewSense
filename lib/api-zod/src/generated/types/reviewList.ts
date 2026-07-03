@@ -5,7 +5,11 @@
  * ReviewSense AI API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Review } from './review';
 
-export interface HealthStatus {
-  status: string;
+export interface ReviewList {
+  items: Review[];
+  total: number;
+  page: number;
+  limit: number;
 }

@@ -3,13 +3,23 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: ReviewSense AI API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: analyses
+    description: Product analysis operations
+  - name: dashboard
+    description: Dashboard summary operations
+  - name: history
+    description: Analysis history operations
+  - name: users
+    description: User management operations
 paths:
   /healthz:
     get:
@@ -24,13 +34,539 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/signup:
+    post:
+      operationId: signup
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignupInput"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Bad request
+        "409":
+          description: Email already in use
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Log in an existing user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Log out current user
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard summary statistics
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/recent:
+    get:
+      operationId: getRecentAnalyses
+      tags: [dashboard]
+      summary: Get recent analyses for dashboard
+      responses:
+        "200":
+          description: Recent analyses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnalysisSummary"
+
+  /analyses:
+    get:
+      operationId: listAnalyses
+      tags: [analyses]
+      summary: List all analyses for the current user
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by product name
+        - name: page
+          in: query
+          schema:
+            type: integer
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+          description: Items per page
+      responses:
+        "200":
+          description: List of analyses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisList"
+
+    post:
+      operationId: createAnalysis
+      tags: [analyses]
+      summary: Start a new analysis from a product URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalysisInput"
+      responses:
+        "201":
+          description: Analysis started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analysis"
+
+  /analyses/{id}:
+    get:
+      operationId: getAnalysis
+      tags: [analyses]
+      summary: Get a specific analysis by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Analysis details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analysis"
+        "404":
+          description: Analysis not found
+
+    delete:
+      operationId: deleteAnalysis
+      tags: [analyses]
+      summary: Delete an analysis
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Analysis deleted
+        "404":
+          description: Analysis not found
+
+  /analyses/{id}/reviews:
+    get:
+      operationId: getAnalysisReviews
+      tags: [analyses]
+      summary: Get reviews for an analysis
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of reviews
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewList"
+
+  /analyses/upload-csv:
+    post:
+      operationId: uploadCsvAnalysis
+      tags: [analyses]
+      summary: Start a new analysis from a CSV upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CsvAnalysisInput"
+      responses:
+        "201":
+          description: Analysis started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analysis"
+
+  /admin/users:
+    get:
+      operationId: adminListUsers
+      tags: [users]
+      summary: Admin — list all users
+      responses:
+        "200":
+          description: All users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
+  /admin/stats:
+    get:
+      operationId: adminGetStats
+      tags: [users]
+      summary: Admin — platform-wide statistics
+      responses:
+        "200":
+          description: Platform stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    MessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    User:
+      type: object
+      required: [id, email, name, role, createdAt]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [user, admin]
+        createdAt:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+
+    SignupInput:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+        password:
+          type: string
+          minLength: 6
+
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    DashboardStats:
+      type: object
+      required: [totalAnalyses, totalReviews, avgPositivePct, avgNegativePct, avgNeutralPct, avgRating, recentCount]
+      properties:
+        totalAnalyses:
+          type: integer
+        totalReviews:
+          type: integer
+        avgPositivePct:
+          type: number
+        avgNegativePct:
+          type: number
+        avgNeutralPct:
+          type: number
+        avgRating:
+          type: number
+        recentCount:
+          type: integer
+
+    AnalysisSummary:
+      type: object
+      required: [id, productName, status, reviewCount, positivePct, negativePct, neutralPct, createdAt]
+      properties:
+        id:
+          type: integer
+        productName:
+          type: string
+        productBrand:
+          type: ["string", "null"]
+        productImageUrl:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        reviewCount:
+          type: integer
+        positivePct:
+          type: number
+        negativePct:
+          type: number
+        neutralPct:
+          type: number
+        avgRating:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+
+    Analysis:
+      type: object
+      required: [id, productName, status, reviewCount, positivePct, negativePct, neutralPct, createdAt]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        productName:
+          type: string
+        productBrand:
+          type: ["string", "null"]
+        productUrl:
+          type: ["string", "null"]
+        productImageUrl:
+          type: ["string", "null"]
+        productCategory:
+          type: ["string", "null"]
+        productPrice:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        reviewCount:
+          type: integer
+        positivePct:
+          type: number
+        negativePct:
+          type: number
+        neutralPct:
+          type: number
+        avgRating:
+          type: ["number", "null"]
+        sentimentScore:
+          type: ["number", "null"]
+        aiConfidence:
+          type: ["number", "null"]
+        overallSummary:
+          type: ["string", "null"]
+        customerOpinion:
+          type: ["string", "null"]
+        strengths:
+          type: ["string", "null"]
+        weaknesses:
+          type: ["string", "null"]
+        recommendation:
+          type: ["string", "null"]
+        businessInsights:
+          type: ["string", "null"]
+        positiveKeywords:
+          type: ["string", "null"]
+        negativeKeywords:
+          type: ["string", "null"]
+        topPhrases:
+          type: ["string", "null"]
+        predNextMonthPositivePct:
+          type: ["number", "null"]
+        predNextMonthNegativePct:
+          type: ["number", "null"]
+        predExpectedRating:
+          type: ["number", "null"]
+        predSatisfactionScore:
+          type: ["number", "null"]
+        predRiskScore:
+          type: ["number", "null"]
+        predBuyRecommendation:
+          type: ["string", "null"]
+        ratingDistribution:
+          type: ["string", "null"]
+        sentimentTimeline:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        completedAt:
+          type: ["string", "null"]
+
+    AnalysisInput:
+      type: object
+      required: [productUrl]
+      properties:
+        productUrl:
+          type: string
+
+    CsvAnalysisInput:
+      type: object
+      required: [productName, reviews]
+      properties:
+        productName:
+          type: string
+        productBrand:
+          type: string
+        reviews:
+          type: array
+          items:
+            $ref: "#/components/schemas/CsvReviewRow"
+
+    CsvReviewRow:
+      type: object
+      required: [review]
+      properties:
+        review:
+          type: string
+        rating:
+          type: ["number", "null"]
+        date:
+          type: ["string", "null"]
+
+    AnalysisList:
+      type: object
+      required: [items, total, page, limit]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalysisSummary"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    Review:
+      type: object
+      required: [id, analysisId, text, sentiment, createdAt]
+      properties:
+        id:
+          type: integer
+        analysisId:
+          type: integer
+        text:
+          type: string
+        sentiment:
+          type: string
+          enum: [positive, negative, neutral]
+        sentimentScore:
+          type: ["number", "null"]
+        confidence:
+          type: ["number", "null"]
+        rating:
+          type: ["number", "null"]
+        reviewDate:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    ReviewList:
+      type: object
+      required: [items, total, page, limit]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Review"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    AdminStats:
+      type: object
+      required: [totalUsers, totalAnalyses, totalReviews, analysesThisWeek, avgAnalysisTime]
+      properties:
+        totalUsers:
+          type: integer
+        totalAnalyses:
+          type: integer
+        totalReviews:
+          type: integer
+        analysesThisWeek:
+          type: integer
+        avgAnalysisTime:
+          type: number
