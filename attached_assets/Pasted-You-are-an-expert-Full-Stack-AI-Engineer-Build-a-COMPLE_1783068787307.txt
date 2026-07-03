@@ -1,0 +1,484 @@
+You are an expert Full Stack AI Engineer.
+
+Build a COMPLETE production-quality web application called
+
+"ReviewSense AI - Customer Review Analyzer"
+
+The application should have a premium modern UI similar to Apple, Stripe, and Notion.
+
+========================================
+PROJECT OVERVIEW
+========================================
+
+The website allows users to paste an e-commerce product URL (Amazon, Flipkart, Walmart, BestBuy, etc.).
+
+The system automatically extracts product information, fetches available customer reviews (or allows CSV upload if reviews cannot be fetched), performs AI-powered review analysis, predicts future customer sentiment, and generates an interactive analytics dashboard.
+
+This is an AI/ML portfolio project.
+
+Everything should be responsive and professionally designed.
+
+========================================
+TECH STACK
+========================================
+
+Frontend
+
+React
+Vite
+TypeScript
+TailwindCSS
+Shadcn UI
+Framer Motion
+React Router
+Axios
+Chart.js
+Lucide Icons
+
+Backend
+
+Python
+FastAPI
+
+Machine Learning
+
+Transformers
+HuggingFace
+DistilBERT sentiment model
+NLTK
+Scikit-learn
+Pandas
+NumPy
+
+Database
+
+SQLite
+
+========================================
+MAIN FEATURES
+========================================
+
+1. Landing Page
+
+Modern hero section
+
+Animated background
+
+Gradient effects
+
+Feature cards
+
+How it Works section
+
+Testimonials
+
+Pricing section
+
+Footer
+
+Dark mode
+
+Responsive
+
+========================================
+2. Authentication
+========================================
+
+Login
+
+Signup
+
+JWT Authentication
+
+Forgot Password UI
+
+Protected Dashboard
+
+========================================
+3. Dashboard
+========================================
+
+Beautiful sidebar
+
+Dashboard Cards
+
+Recent Analysis
+
+Total Reviews
+
+Positive %
+
+Negative %
+
+Neutral %
+
+Predictions
+
+========================================
+4. Product Analyzer
+========================================
+
+Input
+
+Paste Product URL
+
+Example
+
+https://www.amazon.in/dp/XXXXXXXX
+
+Click
+
+Analyze
+
+System extracts
+
+Product Name
+
+Brand
+
+Price
+
+Image
+
+Category
+
+If review extraction fails
+
+Show
+
+"Unable to fetch reviews directly.
+Please upload CSV."
+
+CSV format
+
+review,rating,date
+
+Upload
+
+Analyze
+
+========================================
+5. Review Processing
+========================================
+
+Clean text
+
+Remove punctuation
+
+Stop words
+
+Lowercase
+
+Tokenization
+
+Lemmatization
+
+========================================
+6. AI Sentiment Analysis
+========================================
+
+Use DistilBERT
+
+Classify
+
+Positive
+
+Negative
+
+Neutral
+
+Calculate
+
+Positive %
+
+Negative %
+
+Neutral %
+
+Average Rating
+
+Sentiment Score
+
+Confidence
+
+========================================
+7. AI Summary
+========================================
+
+Generate
+
+Overall Product Summary
+
+Customer Opinion
+
+Strengths
+
+Weaknesses
+
+Purchase Recommendation
+
+Business Insights
+
+Everything should be generated automatically.
+
+========================================
+8. Keyword Extraction
+========================================
+
+Positive keywords
+
+Negative keywords
+
+Top phrases
+
+Most repeated complaints
+
+Most appreciated features
+
+========================================
+9. Charts
+========================================
+
+Pie Chart
+
+Bar Chart
+
+Review Timeline
+
+Rating Distribution
+
+Sentiment Distribution
+
+Keyword Frequency
+
+========================================
+10. Word Clouds
+========================================
+
+Positive
+
+Negative
+
+========================================
+11. Future Prediction
+========================================
+
+Predict future customer satisfaction.
+
+Using review trends
+
+Predict
+
+Next Month
+
+Positive %
+
+Negative %
+
+Expected Rating
+
+Customer Satisfaction Score
+
+Demand Prediction
+
+Buy Recommendation
+
+Risk Score
+
+Display predictions using beautiful charts.
+
+========================================
+12. Export
+========================================
+
+Export
+
+PDF Report
+
+CSV Report
+
+PNG Charts
+
+========================================
+13. Analysis History
+========================================
+
+Save previous analyses
+
+Search
+
+Delete
+
+Re-open
+
+========================================
+14. Settings
+========================================
+
+Dark Mode
+
+Notifications
+
+Profile
+
+Theme
+
+========================================
+15. Admin Panel
+========================================
+
+Users
+
+Reports
+
+Analytics
+
+System Logs
+
+========================================
+UI DESIGN
+========================================
+
+Premium Glassmorphism
+
+Rounded cards
+
+Gradient buttons
+
+Smooth animations
+
+Hover effects
+
+Loading skeletons
+
+Animated counters
+
+Modern charts
+
+Professional typography
+
+No ugly HTML.
+
+Use reusable React components.
+
+========================================
+AI DASHBOARD
+========================================
+
+Display
+
+Overall Score
+
+AI Confidence
+
+Positive Reviews
+
+Negative Reviews
+
+Neutral Reviews
+
+Review Volume
+
+Prediction Score
+
+Recommendation
+
+Everything should update dynamically.
+
+========================================
+FOLDER STRUCTURE
+========================================
+
+frontend/
+
+backend/
+
+models/
+
+api/
+
+database/
+
+assets/
+
+components/
+
+pages/
+
+hooks/
+
+utils/
+
+========================================
+BONUS FEATURES
+========================================
+
+Voice Summary
+
+Download PDF
+
+Copy AI Summary
+
+Compare Two Products
+
+Review Search
+
+Filter Reviews
+
+Sort Reviews
+
+Fake Review Detection
+
+Emotion Detection
+
+Spam Detection
+
+Review Language Detection
+
+Translation
+
+Trending Topics
+
+Topic Modeling
+
+========================================
+IMPORTANT
+========================================
+
+The project should work immediately after running
+
+npm install
+
+and
+
+uvicorn main:app --reload
+
+Do not leave placeholders.
+
+Generate complete frontend.
+
+Generate complete backend.
+
+Generate API routes.
+
+Generate database.
+
+Generate ML pipeline.
+
+Generate charts.
+
+Generate animations.
+
+Generate reusable components.
+
+Generate responsive design.
+
+Write clean code.
+
+No TODO comments.
+
+No dummy UI.
+
+Everything should be functional.
+
+The final project should look like a premium SaaS AI application suitable for an AI/ML internship portfolio.

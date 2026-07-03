@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "ReviewSense AI"
+version = "1.0.0"
+id = "artifacts/review-sense"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24264
+
+[services.development]
+run = "pnpm --filter @workspace/review-sense run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/review-sense", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/review-sense/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24264"
+BASE_PATH = "/"
