@@ -36,8 +36,40 @@ export default function ResultPage() {
     query: { queryKey: getGetAnalysisReviewsQueryKey(analysisId) }
   });
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      const { default: html2canvas } = await import("html2canvas");
+
+      const element = document.getElementById("pdf-content");
+      if (!element) return;
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#0f0f13",
+        logging: false,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let yPos = 0;
+      while (yPos < imgHeight) {
+        if (yPos > 0) pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, -yPos, imgWidth, imgHeight);
+        yPos += pageHeight;
+      }
+
+      pdf.save(`reviewsense-${analysisId}.pdf`);
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      window.print(); // fallback
+    }
   };
 
   const handleCsvExport = () => {
@@ -109,7 +141,7 @@ export default function ResultPage() {
 
   return (
     <SidebarLayout>
-      <div className="space-y-8 print:space-y-4">
+      <div id="pdf-content" className="space-y-8 print:space-y-4">
         {/* Header Actions */}
         <div className="flex items-center justify-between no-print">
           <Button variant="ghost" className="text-muted-foreground" asChild>

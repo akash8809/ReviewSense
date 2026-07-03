@@ -11,26 +11,31 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Trash2, ExternalLink, Filter, ChevronRight, Activity } from "lucide-react";
+import { Search, Trash2, ChevronRight, Activity, ChevronLeft } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+
+const PAGE_LIMIT = 20;
 
 export default function HistoryPage() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  
-  // Use debounce for search
+  const [page, setPage] = useState(1);
+
+  // Use debounce for search — reset to page 1 on new search
   const [debouncedSearch, setDebouncedSearch] = useState("");
   React.useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 500);
+    const timer = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 500);
     return () => clearTimeout(timer);
   }, [search]);
 
   const { data, isLoading } = useListAnalyses(
-    { search: debouncedSearch || undefined, limit: 50 },
-    { query: { queryKey: getListAnalysesQueryKey({ search: debouncedSearch || undefined, limit: 50 }) } }
+    { search: debouncedSearch || undefined, limit: PAGE_LIMIT, page },
+    { query: { queryKey: getListAnalysesQueryKey({ search: debouncedSearch || undefined, limit: PAGE_LIMIT, page }) } }
   );
+
+  const totalPages = data ? Math.ceil(data.total / PAGE_LIMIT) : 1;
 
   const deleteMutation = useDeleteAnalysis();
 
@@ -141,6 +146,38 @@ export default function HistoryPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Pagination controls */}
+        {data && data.total > PAGE_LIMIT && (
+          <div className="flex items-center justify-between px-1">
+            <p className="text-sm text-muted-foreground">
+              Showing {(page - 1) * PAGE_LIMIT + 1}–{Math.min(page * PAGE_LIMIT, data.total)} of {data.total} analyses
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1 || isLoading}
+                className="gap-1"
+              >
+                <ChevronLeft className="w-4 h-4" /> Previous
+              </Button>
+              <span className="text-sm font-medium px-2">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || isLoading}
+                className="gap-1"
+              >
+                Next <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </SidebarLayout>
   );

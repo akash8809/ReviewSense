@@ -282,9 +282,12 @@ async function processAnalysis(analysisId: number, productUrl: string, userId: n
       .set({ productName: productInfo.productName, productBrand: productInfo.productBrand ?? null })
       .where(eq(analysesTable.id, analysisId));
 
-    const reviews = productInfo.sampleReviews.length > 0
-      ? productInfo.sampleReviews
-      : generateSampleReviews(productInfo.productName);
+    if (productInfo.sampleReviews.length === 0) {
+      throw new Error(
+        "No reviews were found for this product URL. The page may be blocking automated access, or the URL may not be a product listing with reviews. Please try the CSV upload option to paste your reviews directly."
+      );
+    }
+    const reviews = productInfo.sampleReviews;
 
     await runAnalysis(analysisId, productInfo.productName, reviews, {
       productBrand: productInfo.productBrand,
@@ -372,21 +375,6 @@ async function runAnalysis(
       }))
     );
   }
-}
-
-function generateSampleReviews(productName: string) {
-  return [
-    { review: `This ${productName} is absolutely amazing! Works perfectly and exceeded my expectations.`, rating: 5 },
-    { review: `Good product overall, but the shipping was a bit slow. Product quality is solid.`, rating: 4 },
-    { review: `Decent quality for the price. I've seen better but also much worse. Would buy again.`, rating: 3 },
-    { review: `Disappointed. The ${productName} stopped working after just 2 weeks. Poor durability.`, rating: 2 },
-    { review: `Terrible experience. Does not match the description at all. Returning immediately.`, rating: 1 },
-    { review: `Exceeded all expectations! The build quality is premium and it works flawlessly.`, rating: 5 },
-    { review: `Pretty good value for money. Minor issues but nothing deal-breaking.`, rating: 4 },
-    { review: `Average product. Does what it says but nothing more. Okay for the price.`, rating: 3 },
-    { review: `Great product! Fast delivery and exactly as described. Highly recommended.`, rating: 5 },
-    { review: `Not worth the price. Quality feels cheap and it broke after a month.`, rating: 2 },
-  ];
 }
 
 export default router;
