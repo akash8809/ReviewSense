@@ -1,45 +1,57 @@
-# [Project name]
+# ReviewSense AI
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+AI-powered product review analyzer: paste a URL or upload a CSV of reviews and get sentiment analysis, trend predictions, strengths/weaknesses, and business insights powered by OpenAI and Google Gemini.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — build + start the API server (uses PORT env var)
+- `pnpm --filter @workspace/review-sense run dev` — start the frontend (Vite dev server)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `pnpm --filter @workspace/db run push` — push DB schema changes to the development database (dev only)
+
+## Required Secrets
+
+- `SESSION_SECRET` — JWT signing secret (already set)
+- `OPENAI_API_KEY` — OpenAI API key for analysis
+- `GEMINI_API_KEY` — Google Gemini API key for analysis
+- `DATABASE_URL` — managed automatically by Replit (do not set manually)
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- **Frontend**: React 19, Vite 7, Tailwind CSS 4, Wouter (routing), TanStack Query, Zustand, Radix UI
+- **API**: Express 5, esbuild bundled to `dist/index.mjs`
+- **DB**: PostgreSQL + Drizzle ORM (schema in `lib/db/src/schema/`)
+- **AI**: OpenAI SDK + Google Generative AI (Gemini)
+- **Validation**: Zod v4, drizzle-zod, Orval-generated hooks from OpenAPI spec
+- **Auth**: JWT via `jsonwebtoken`, secret from `SESSION_SECRET`
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/api-server/src/` — Express app, routes, and lib (auth, openai, gemini, analyzer)
+- `artifacts/review-sense/src/` — React frontend, pages, components, hooks
+- `lib/db/src/schema/` — Drizzle table definitions (users, analyses, reviews)
+- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contract)
+- `lib/api-zod/src/` — Zod schemas generated from OpenAPI spec
+- `lib/api-client-react/src/` — React hooks for API calls
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- API server bundles to ESM with esbuild before running (not ts-node/tsx at runtime) — fast cold start, no runtime transpilation
+- Shared libs (`lib/*`) use direct `src/` TypeScript exports (no build step needed for libs)
+- Auth uses JWT stored in `Authorization: Bearer` header, not cookies
+- Both OpenAI and Gemini are supported; the analyzer picks the configured provider
+- Frontend routes relative to `import.meta.env.BASE_URL` for proxy compatibility
 
-## Product
+## Gotchas
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- `DATABASE_URL` is runtime-managed by Replit — never set it manually
+- The API server must be rebuilt (`pnpm run build`) before changes take effect in dev
+- `SESSION_SECRET` must be set or the API server will throw at startup
+- Path alias `@/` in the frontend resolves to `artifacts/review-sense/src/`
 
 ## User preferences
 
 _Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details

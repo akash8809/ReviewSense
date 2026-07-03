@@ -1,10 +1,11 @@
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 
-const JWT_SECRET = process.env.SESSION_SECRET;
-if (!JWT_SECRET) {
+const _jwtSecret = process.env.SESSION_SECRET;
+if (!_jwtSecret) {
   throw new Error("SESSION_SECRET environment variable is required but was not provided.");
 }
+const JWT_SECRET: string = _jwtSecret;
 
 export interface JwtPayload {
   userId: number;
@@ -17,7 +18,11 @@ export function signToken(payload: JwtPayload): string {
 }
 
 export function verifyToken(token: string): JwtPayload {
-  return jwt.verify(token, JWT_SECRET) as JwtPayload;
+  const decoded = jwt.verify(token, JWT_SECRET);
+  if (typeof decoded !== "object" || decoded === null) {
+    throw new Error("Invalid token payload");
+  }
+  return decoded as JwtPayload;
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
