@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { randomUUID } from "crypto";
 import { db, analysesTable, reviewsTable } from "@workspace/db";
 import { eq, desc, and, like, sql } from "drizzle-orm";
 import {
@@ -56,6 +57,7 @@ function formatAnalysis(a: Record<string, unknown>) {
     predBuyRecommendation: a.predBuyRecommendation ?? null,
     ratingDistribution: a.ratingDistribution ?? null,
     sentimentTimeline: a.sentimentTimeline ?? null,
+    shareToken: a.shareToken ?? null,
     createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : a.createdAt,
     completedAt: a.completedAt instanceof Date ? a.completedAt.toISOString() : (a.completedAt ?? null),
   };
@@ -376,5 +378,61 @@ async function runAnalysis(
     );
   }
 }
+
+// POST /analyses/:id/share — generate a shareable token
+router.post("/analyses/:id/share", requireAuth, async (req, res): Promise<void> => {
+  const params = GetAnalysisParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const user = getUser(req);
+  const [analysis] = await db.select().from(analysesTable)
+    .where(and(eq(analysesTable.id, params.data.id), eq(analysesTable.userId, user.userId)));
+  if (!analysis) { res.status(404).json({ error: "Analysis not found" }); return; }
+
+  const token = (analysis as typeof analysis & { shareToken?: string }).shareToken ?? randomUUID();
+  await db.update(analysesTable)
+    .set({ shareToken: token } as Parameters<typeof db.update>[0] extends never ? never : Record<string, unknown> as any)
+    .where(eq(analysesTable.id, analysis.id));
+  res.json({ token });
+});
+
+// GET /public/analyses/:token — no auth required
+router.get("/public/analyses/:token", async (req, res): Promise<void> => {
+  const { token } = req.params;
+  const [analysis] = await db.select().from(analysesTable)
+    .where(sql`${analysesTable.shareToken} = ${token}`);
+  if (!analysis) { res.status(404).json({ error: "Shared analysis not found or link is invalid." }); return; }
+  res.json(formatAnalysis(analysis as unknown as Record<string, unknown>));
+});
+
+// POST /analyses/:id/reanalyze — re-run analysis with same product URL
+router.post("/analyses/:id/reanalyze", requireAuth, async (req, res): Promise<void> => {
+  const params = GetAnalysisParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const user = getUser(req);
+  const [analysis] = await db.select().from(analysesTable)
+    .where(and(eq(analysesTable.id, params.data.id), eq(analysesTable.userId, user.userId)));
+  if (!analysis) { res.status(404).json({ error: "Analysis not found" }); return; }
+  if (!analysis.productUrl) {
+    res.status(400).json({ error: "This analysis has no product URL. Use CSV upload to re-analyze with custom reviews." });
+    return;
+  }
+
+  const [newAnalysis] = await db.insert(analysesTable).values({
+    userId: user.userId,
+    productName: analysis.productName,
+    productUrl: analysis.productUrl,
+    status: "processing",
+    reviewCount: 0, positivePct: 0, negativePct: 0, neutralPct: 0,
+  }).returning();
+
+  res.status(201).json(formatAnalysis(newAnalysis as unknown as Record<string, unknown>));
+
+  setImmediate(() => {
+    processAnalysis(newAnalysis.id, analysis.productUrl!, user.userId).catch(async (err) => {
+      logger.error({ err, analysisId: newAnalysis.id }, "Re-analysis failed");
+      await db.update(analysesTable).set({ status: "failed" }).where(eq(analysesTable.id, newAnalysis.id)).catch(() => {});
+    });
+  });
+});
 
 export default router;

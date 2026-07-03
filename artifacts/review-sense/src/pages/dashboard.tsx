@@ -1,18 +1,22 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { 
   useGetDashboardStats, 
   getGetDashboardStatsQueryKey,
   useGetRecentAnalyses,
-  getGetRecentAnalysesQueryKey
+  getGetRecentAnalysesQueryKey,
+  customFetch
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, BarChart, FileText, Search, Star, ArrowRight, Plus } from "lucide-react";
+import { Activity, BarChart, FileText, Search, Star, ArrowRight, Plus, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart
+} from "recharts";
 
 function StatCard({ title, value, icon: Icon, prefix = "", suffix = "", isLoaded }: any) {
   return (
@@ -44,6 +48,13 @@ export default function DashboardPage() {
   const { data: recent, isLoading: recentLoading } = useGetRecentAnalyses({
     query: { queryKey: getGetRecentAnalysesQueryKey() }
   });
+
+  const [trend, setTrend] = useState<{ date: string; count: number; avgSentiment: number }[]>([]);
+  useEffect(() => {
+    customFetch<{ date: string; count: number; avgSentiment: number }[]>("/api/dashboard/trend")
+      .then(setTrend)
+      .catch(() => {});
+  }, []);
 
   const [url, setUrl] = React.useState("");
 
@@ -188,6 +199,39 @@ export default function DashboardPage() {
               )}
             </CardContent>
           </Card>
+        {/* Trend Chart */}
+        <Card className="glass-panel border-border/50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp className="w-4 h-4 text-primary" /> Sentiment Trend — Last 30 Days
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="h-[200px]">
+            {trend.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trend} margin={{ left: -20, right: 10, top: 5, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="sentGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                  <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }} />
+                  <Area type="monotone" dataKey="avgSentiment" name="Avg Sentiment" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#sentGrad)" dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
+                <BarChart className="w-10 h-10 mb-2 opacity-20" />
+                <p className="text-sm">Run a few analyses to see your trend here</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         </div>
       </div>
     </SidebarLayout>

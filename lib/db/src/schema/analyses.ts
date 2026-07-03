@@ -36,6 +36,7 @@ export const analysesTable = pgTable("analyses", {
   predBuyRecommendation: text("pred_buy_recommendation"),
   ratingDistribution: text("rating_distribution"),
   sentimentTimeline: text("sentiment_timeline"),
+  shareToken: text("share_token").unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });

@@ -15,6 +15,8 @@ import ResultPage from './pages/result';
 import HistoryPage from './pages/history';
 import SettingsPage from './pages/settings';
 import AdminPage from './pages/admin';
+import ComparePage from './pages/compare';
+import SharedPage from './pages/shared';
 
 const queryClient = new QueryClient();
 
@@ -30,6 +32,8 @@ function Router() {
       <Route path="/history" component={HistoryPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/admin" component={AdminPage} />
+      <Route path="/compare" component={ComparePage} />
+      <Route path="/shared/:token" component={SharedPage} />
       <Route component={NotFound} />
     </Switch>
   );

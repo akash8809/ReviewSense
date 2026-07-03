@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, analysesTable, reviewsTable } from "@workspace/db";
-import { eq, desc, sql, avg } from "drizzle-orm";
+import { eq, desc, sql, avg, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import type { JwtPayload } from "../lib/auth";
 import type { Request } from "express";
@@ -80,6 +80,46 @@ router.get("/dashboard/recent", requireAuth, async (req, res): Promise<void> => 
       createdAt: a.createdAt.toISOString(),
     }))
   );
+});
+
+// GET /dashboard/trend — analyses per day + avg sentiment for last 30 days
+router.get("/dashboard/trend", requireAuth, async (req, res): Promise<void> => {
+  const user = getUser(req);
+  const rows = await db
+    .select({
+      date: sql<string>`DATE(${analysesTable.createdAt})`,
+      count: sql<number>`count(*)`,
+      avgSentiment: avg(analysesTable.sentimentScore),
+    })
+    .from(analysesTable)
+    .where(
+      sql`${analysesTable.userId} = ${user.userId}
+          AND ${analysesTable.createdAt} > NOW() - INTERVAL '30 days'
+          AND ${analysesTable.status} = 'completed'`
+    )
+    .groupBy(sql`DATE(${analysesTable.createdAt})`)
+    .orderBy(sql`DATE(${analysesTable.createdAt})`);
+
+  res.json(rows.map((r) => ({
+    date: r.date,
+    count: Number(r.count),
+    avgSentiment: Math.round(Number(r.avgSentiment ?? 0) * 10) / 10,
+  })));
+});
+
+// GET /dashboard/usage — this month's usage vs free tier limit
+router.get("/dashboard/usage", requireAuth, async (req, res): Promise<void> => {
+  const user = getUser(req);
+  const FREE_TIER_LIMIT = 50;
+  const [result] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(analysesTable)
+    .where(
+      sql`${analysesTable.userId} = ${user.userId}
+          AND DATE_TRUNC('month', ${analysesTable.createdAt}) = DATE_TRUNC('month', NOW())`
+    );
+  const used = Number(result?.count ?? 0);
+  res.json({ used, limit: FREE_TIER_LIMIT, remaining: Math.max(0, FREE_TIER_LIMIT - used), tier: "free" });
 });
 
 export default router;
