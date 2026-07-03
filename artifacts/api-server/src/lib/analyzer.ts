@@ -1,4 +1,4 @@
-import { openai } from "./openai";
+import { getModel } from "./gemini";
 import { logger } from "./logger";
 
 export interface ReviewItem {
@@ -40,80 +40,87 @@ export interface AnalysisResult {
   predBuyRecommendation: string;
 }
 
+async function callGemini(prompt: string): Promise<string> {
+  const model = getModel("gemini-2.5-flash");
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      maxOutputTokens: 8192,
+    },
+  });
+  return result.response.text();
+}
+
 export async function analyzeReviews(
   productName: string,
   reviews: ReviewItem[]
 ): Promise<AnalysisResult> {
-  // Batch analyze sentiment for all reviews
   const reviewTexts = reviews.map((r, i) => `${i + 1}. ${r.review}`).join("\n");
 
-  const sentimentPrompt = `You are a sentiment analysis AI. Analyze the sentiment of these product reviews for "${productName}".
+  const sentimentPrompt = `You are a sentiment analysis AI. Analyze the sentiment of each of these product reviews for "${productName}".
 
 For EACH review, provide:
 - sentiment: "positive", "negative", or "neutral"
-- score: a float from -1.0 (very negative) to 1.0 (very positive)
-- confidence: a float from 0.0 to 1.0
+- score: float from -1.0 (very negative) to 1.0 (very positive)
+- confidence: float from 0.0 to 1.0
 
 Reviews:
 ${reviewTexts}
 
-Respond ONLY with a JSON array with exactly ${reviews.length} objects, one per review:
-[{"sentiment":"positive","score":0.8,"confidence":0.95}, ...]`;
+Return a JSON object with a single key "results" containing an array of exactly ${reviews.length} objects:
+{"results": [{"sentiment":"positive","score":0.8,"confidence":0.95}, ...]}`;
 
-  const summaryPrompt = `You are an expert product analyst. Based on customer reviews for "${productName}", provide a comprehensive analysis.
+  const summaryPrompt = `You are an expert product analyst. Analyze these customer reviews for the product "${productName}" and provide a comprehensive analysis.
 
-Reviews sample:
-${reviewTexts.slice(0, 3000)}
+Reviews:
+${reviewTexts.slice(0, 6000)}
 
-Respond with a JSON object:
+Return a JSON object with exactly these fields:
 {
-  "overallSummary": "2-3 sentence overall product summary",
-  "customerOpinion": "What customers generally think in 2 sentences",
-  "strengths": "Top 3-4 product strengths as a comma-separated list",
-  "weaknesses": "Top 2-3 product weaknesses as a comma-separated list",
-  "recommendation": "Should you buy this? One clear sentence",
-  "businessInsights": "2-3 actionable business insights for the seller",
-  "positiveKeywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5", "keyword6", "keyword7", "keyword8"],
-  "negativeKeywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+  "overallSummary": "2-3 sentence overall product summary based on the reviews",
+  "customerOpinion": "What customers generally think — 2 sentences",
+  "strengths": "Top 3-4 product strengths mentioned in reviews, as a comma-separated list",
+  "weaknesses": "Top 2-3 product weaknesses or complaints from reviews, as a comma-separated list",
+  "recommendation": "One clear sentence — should someone buy this product?",
+  "businessInsights": "2-3 actionable insights for the seller based on the reviews",
+  "positiveKeywords": ["word1", "word2", "word3", "word4", "word5", "word6", "word7", "word8"],
+  "negativeKeywords": ["word1", "word2", "word3", "word4", "word5"],
   "topPhrases": ["phrase1", "phrase2", "phrase3", "phrase4", "phrase5"],
   "predNextMonthPositivePct": 72.5,
   "predNextMonthNegativePct": 15.2,
   "predExpectedRating": 4.1,
   "predSatisfactionScore": 78.3,
   "predRiskScore": 22.4,
-  "predBuyRecommendation": "Recommended — strong value proposition with minor quality concerns"
+  "predBuyRecommendation": "One sentence buy recommendation with reasoning"
 }`;
 
-  const [sentimentResponse, summaryResponse] = await Promise.all([
-    openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: sentimentPrompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 4000,
-    }).catch(() => null),
-    openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: summaryPrompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 2000,
-    }).catch(() => null),
+  const [sentimentRaw, summaryRaw] = await Promise.all([
+    callGemini(sentimentPrompt).catch((e) => {
+      logger.warn({ err: e }, "Sentiment Gemini call failed");
+      return "{}";
+    }),
+    callGemini(summaryPrompt).catch((e) => {
+      logger.warn({ err: e }, "Summary Gemini call failed");
+      return "{}";
+    }),
   ]);
 
-  // Parse sentiment results
+  // Parse sentiment
   let sentiments: SentimentResult[] = [];
   try {
-    const raw = JSON.parse(sentimentResponse?.choices[0]?.message?.content ?? "{}");
-    const arr = Array.isArray(raw) ? raw : raw.results ?? raw.sentiments ?? [];
+    const raw = JSON.parse(sentimentRaw);
+    const arr = Array.isArray(raw) ? raw : (raw.results ?? raw.sentiments ?? []);
     sentiments = arr.slice(0, reviews.length).map((s: Record<string, unknown>) => ({
-      sentiment: (["positive", "negative", "neutral"].includes(String(s.sentiment)) ? s.sentiment : "neutral") as "positive" | "negative" | "neutral",
+      sentiment: (["positive", "negative", "neutral"].includes(String(s.sentiment))
+        ? s.sentiment
+        : "neutral") as "positive" | "negative" | "neutral",
       score: typeof s.score === "number" ? s.score : 0,
       confidence: typeof s.confidence === "number" ? s.confidence : 0.7,
     }));
   } catch (e) {
-    logger.warn({ err: e }, "Failed to parse sentiment response, using defaults");
+    logger.warn({ err: e }, "Failed to parse sentiment response");
   }
-
-  // Fill missing sentiments with neutral
   while (sentiments.length < reviews.length) {
     sentiments.push({ sentiment: "neutral", score: 0, confidence: 0.5 });
   }
@@ -121,33 +128,33 @@ Respond with a JSON object:
   // Parse summary
   let summary = {
     overallSummary: "Analysis complete.",
-    customerOpinion: "Mixed reviews from customers.",
+    customerOpinion: "Mixed customer feedback.",
     strengths: "Quality, Value",
-    weaknesses: "Shipping delays",
-    recommendation: "Recommended with some reservations.",
-    businessInsights: "Focus on improving delivery times.",
-    positiveKeywords: ["quality", "value", "great", "good", "love"],
-    negativeKeywords: ["slow", "issue", "problem"],
-    topPhrases: ["great product", "good value", "fast shipping"],
+    weaknesses: "Shipping",
+    recommendation: "Recommended with reservations.",
+    businessInsights: "Focus on customer service.",
+    positiveKeywords: ["quality", "value", "great", "good", "love", "easy", "fast", "durable"],
+    negativeKeywords: ["slow", "issue", "problem", "cheap", "broken"],
+    topPhrases: ["great product", "good value", "fast shipping", "easy to use", "highly recommend"],
     predNextMonthPositivePct: 70,
     predNextMonthNegativePct: 15,
     predExpectedRating: 4.0,
     predSatisfactionScore: 75,
     predRiskScore: 25,
-    predBuyRecommendation: "Recommended based on overall sentiment trends.",
+    predBuyRecommendation: "Recommended based on overall sentiment.",
   };
   try {
-    const raw = JSON.parse(summaryResponse?.choices[0]?.message?.content ?? "{}");
+    const raw = JSON.parse(summaryRaw);
     summary = { ...summary, ...raw };
   } catch (e) {
-    logger.warn({ err: e }, "Failed to parse summary response, using defaults");
+    logger.warn({ err: e }, "Failed to parse summary response");
   }
 
   // Compute metrics
+  const total = reviews.length;
   const positiveCount = sentiments.filter((s) => s.sentiment === "positive").length;
   const negativeCount = sentiments.filter((s) => s.sentiment === "negative").length;
   const neutralCount = sentiments.filter((s) => s.sentiment === "neutral").length;
-  const total = reviews.length;
 
   const positivePct = total > 0 ? (positiveCount / total) * 100 : 0;
   const negativePct = total > 0 ? (negativeCount / total) * 100 : 0;
@@ -175,15 +182,15 @@ Respond with a JSON object:
     }
   }
 
-  // Sentiment timeline: group by month if dates available, else fake monthly buckets
-  const sentimentTimeline: Array<{ date: string; positive: number; negative: number; neutral: number }> = [];
+  // Sentiment timeline
   const monthMap = new Map<string, { positive: number; negative: number; neutral: number; total: number }>();
-
   for (let i = 0; i < reviews.length; i++) {
     const rev = reviews[i];
     const sent = sentiments[i];
     const dateStr = rev.date ?? "";
-    const monthKey = dateStr ? dateStr.slice(0, 7) : `Month ${Math.floor(i / Math.max(1, Math.floor(total / 6))) + 1}`;
+    const monthKey = dateStr
+      ? dateStr.slice(0, 7)
+      : `Month ${Math.floor(i / Math.max(1, Math.floor(total / 6))) + 1}`;
     if (!monthMap.has(monthKey)) {
       monthMap.set(monthKey, { positive: 0, negative: 0, neutral: 0, total: 0 });
     }
@@ -191,15 +198,14 @@ Respond with a JSON object:
     entry[sent.sentiment]++;
     entry.total++;
   }
-
-  for (const [date, counts] of Array.from(monthMap.entries()).slice(0, 12)) {
-    sentimentTimeline.push({
+  const sentimentTimeline = Array.from(monthMap.entries())
+    .slice(0, 12)
+    .map(([date, counts]) => ({
       date,
       positive: counts.total > 0 ? Math.round((counts.positive / counts.total) * 100) : 0,
       negative: counts.total > 0 ? Math.round((counts.negative / counts.total) * 100) : 0,
       neutral: counts.total > 0 ? Math.round((counts.neutral / counts.total) * 100) : 0,
-    });
-  }
+    }));
 
   return {
     reviews: reviews.map((r, i) => ({
@@ -220,7 +226,7 @@ Respond with a JSON object:
   };
 }
 
-/** Strip HTML tags and collapse whitespace to get readable plain text. */
+/** Strip HTML tags and collapse whitespace. */
 function stripHtml(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -236,23 +242,23 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-/** Pull the most useful text sections out of raw page HTML. */
-function extractPageText(html: string, maxChars = 8000): string {
-  // Grab <title>
+/** Extract the most useful text sections from raw HTML. */
+function extractPageText(html: string, maxChars = 8000): { text: string; imageUrl: string } {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const title = titleMatch ? stripHtml(titleMatch[1]) : "";
 
-  // Grab meta description
-  const metaMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
-    ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+  const metaMatch =
+    html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) ??
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
   const meta = metaMatch ? metaMatch[1] : "";
 
-  // Grab Open Graph title / description (richer on product pages)
-  const ogTitle = (html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ?? [])[1] ?? "";
-  const ogDesc  = (html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i) ?? [])[1] ?? "";
-  const ogImage = (html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ?? [])[1] ?? "";
+  const ogTitle =
+    (html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ?? [])[1] ?? "";
+  const ogDesc =
+    (html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i) ?? [])[1] ?? "";
+  const ogImage =
+    (html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ?? [])[1] ?? "";
 
-  // Strip the full page body and take a chunk
   const bodyText = stripHtml(html).slice(0, maxChars);
 
   const parts = [
@@ -266,7 +272,7 @@ function extractPageText(html: string, maxChars = 8000): string {
   return { text: parts.join("\n\n"), imageUrl: ogImage };
 }
 
-/** Attempt to fetch the product page with a realistic browser User-Agent. */
+/** Fetch product page HTML with a browser-like User-Agent. */
 async function fetchPageHtml(url: string): Promise<string | null> {
   try {
     const controller = new AbortController();
@@ -277,9 +283,8 @@ async function fetchPageHtml(url: string): Promise<string | null> {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
           "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
         "Cache-Control": "no-cache",
       },
     });
@@ -302,7 +307,6 @@ export async function extractProductInfo(url: string): Promise<{
   productPrice?: string;
   sampleReviews: ReviewItem[];
 }> {
-  // 1. Try to actually fetch the page so GPT gets real content
   const html = await fetchPageHtml(url);
   let pageContext = "";
   let scrapedImageUrl = "";
@@ -310,59 +314,51 @@ export async function extractProductInfo(url: string): Promise<{
   if (html) {
     const extracted = extractPageText(html);
     pageContext = extracted.text;
-    scrapedImageUrl = extracted.imageUrl ?? "";
+    scrapedImageUrl = extracted.imageUrl;
     logger.info({ url, chars: pageContext.length }, "Scraped product page");
   } else {
     logger.warn({ url }, "Could not fetch page — falling back to URL-only inference");
   }
 
-  // 2. Ask GPT to parse the real page text (or fall back to URL inference)
   const prompt = html
-    ? `You are a product data extractor. A customer submitted this e-commerce URL for review analysis:
+    ? `You are a product data extractor. A user submitted this e-commerce URL for review analysis:
 URL: ${url}
 
-Below is the actual page content we scraped from that URL. Use it to extract accurate product information.
+Here is the actual scraped page content:
 
 === SCRAPED PAGE CONTENT ===
 ${pageContext}
 ===========================
 
-From the scraped content above, extract:
-- The exact product name as listed on the page
-- The brand/manufacturer
-- The product category
-- The price (if visible)
+From the content above, extract the exact product details and generate 20 realistic, SPECIFIC customer reviews for THIS product.
+Reviews must reflect this product's actual features, typical use cases, and common complaints — NOT a generic product.
+Mix: ~60% positive (4-5★), ~20% neutral (3★), ~20% negative (1-2★). Vary lengths from 1 to 4 sentences.
 
-Then generate 20 realistic, DIVERSE customer reviews SPECIFIC to this exact product — its actual features, common complaints, use cases. 
-Reviews must reflect the REAL product above (not a generic product).
-Mix: ~60% positive (4-5★), ~20% neutral (3★), ~20% negative (1-2★).
-Vary length from 1 sentence to 4 sentences. Make them sound like genuine human reviews.
-
-Respond with JSON:
+Return JSON:
 {
   "productName": "exact product name from the page",
-  "productBrand": "brand/manufacturer",
-  "productCategory": "category",
+  "productBrand": "brand or manufacturer",
+  "productCategory": "product category",
   "productPrice": "$XX.XX or null",
   "reviews": [
-    {"review": "review text here", "rating": 5, "date": "2024-06-15"},
-    ...20 items...
+    {"review": "...", "rating": 5, "date": "2024-06-15"},
+    ... 20 total items
   ]
 }`
-    : `You are a product data extractor. Extract information from this e-commerce product URL:
+    : `You are a product data extractor. Decode this e-commerce product URL to identify the exact product:
 URL: ${url}
 
-The URL itself contains clues (product slug, ASIN, keywords). Use them carefully to infer:
-- Product name (decode the slug/ASIN as best you can)
-- Brand
+Use the URL slug, ASIN, keywords, and domain to infer:
+- Exact product name
+- Brand / manufacturer
 - Category
-- Approximate price range
+- Approximate price
 
-Then generate 20 realistic, DIVERSE customer reviews SPECIFIC to the inferred product.
-The reviews MUST be tailored to this specific product's likely features, problems, and use cases.
+Then generate 20 realistic, SPECIFIC customer reviews for THIS product.
+Reviews must reflect this specific product's features, problems, and use cases — not a generic product type.
 Mix: ~60% positive (4-5★), ~20% neutral (3★), ~20% negative (1-2★).
 
-Respond with JSON:
+Return JSON:
 {
   "productName": "...",
   "productBrand": "...",
@@ -370,18 +366,13 @@ Respond with JSON:
   "productPrice": "$XX.XX or null",
   "reviews": [
     {"review": "...", "rating": 4, "date": "2024-05-10"},
-    ...20 items...
+    ... 20 total items
   ]
 }`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 4000,
-    });
-    const data = JSON.parse(response.choices[0]?.message?.content ?? "{}");
+    const raw = await callGemini(prompt);
+    const data = JSON.parse(raw);
     return {
       productName: data.productName ?? new URL(url).hostname + " Product",
       productBrand: data.productBrand ?? undefined,
@@ -391,7 +382,7 @@ Respond with JSON:
       sampleReviews: Array.isArray(data.reviews) ? data.reviews : [],
     };
   } catch (e) {
-    logger.error({ err: e }, "Failed to extract product info");
+    logger.error({ err: e }, "Failed to extract product info via Gemini");
     return {
       productName: "Product from " + new URL(url).hostname,
       sampleReviews: [],
