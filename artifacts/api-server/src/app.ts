@@ -36,10 +36,10 @@ app.use(express.urlencoded({ extended: true }));
 // Rate limit analysis creation — max 20 per hour per IP
 const analysisRateLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 20,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many analysis requests. You can run up to 20 analyses per hour. Please wait before trying again." },
+  message: { error: "Too many analysis requests. You can run up to 1000 analyses per hour. Please wait before trying again." },
 });
 
 app.use("/api/analyses", analysisRateLimit);

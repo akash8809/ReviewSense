@@ -470,6 +470,26 @@ components:
           type: string
         completedAt:
           type: ["string", "null"]
+        mlDetails:
+          type: object
+          nullable: true
+          required: [modelName, trainingAccuracy, testingAccuracy, precision, recall, f1Score, predictionTimeMs]
+          properties:
+            modelName:
+              type: string
+            trainingAccuracy:
+              type: number
+            testingAccuracy:
+              type: number
+            precision:
+              type: number
+            recall:
+              type: number
+            f1Score:
+              type: number
+            predictionTimeMs:
+              type: number
+
 
     AnalysisInput:
       type: object

@@ -320,8 +320,74 @@ export default function ResultPage() {
                   <p className="leading-relaxed">{analysis.businessInsights}</p>
                 </CardContent>
               </Card>
+
+              {analysis.mlDetails && (
+                <Card className="glass-panel border-primary/20 md:col-span-2">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-primary">
+                      <Activity className="w-5 h-5" /> Machine Learning Details
+                    </CardTitle>
+                    <CardDescription>
+                      Evaluation metrics and classification performance of the sentiment analyzer model.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50 col-span-2 md:col-span-4 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-muted-foreground">Model Architecture</span>
+                        <span className="text-sm font-bold font-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
+                          {analysis.mlDetails.modelName}
+                        </span>
+                      </div>
+                      
+                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Training Accuracy</div>
+                        <div className="text-2xl font-bold font-mono text-foreground">
+                          {(analysis.mlDetails.trainingAccuracy * 100).toFixed(1)}%
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Testing Accuracy</div>
+                        <div className="text-2xl font-bold font-mono text-foreground">
+                          {(analysis.mlDetails.testingAccuracy * 100).toFixed(1)}%
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Precision</div>
+                        <div className="text-2xl font-bold font-mono text-foreground">
+                          {(analysis.mlDetails.precision * 100).toFixed(1)}%
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Recall</div>
+                        <div className="text-2xl font-bold font-mono text-foreground">
+                          {(analysis.mlDetails.recall * 100).toFixed(1)}%
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">F1 Score</div>
+                        <div className="text-2xl font-bold font-mono text-foreground">
+                          {(analysis.mlDetails.f1Score * 100).toFixed(1)}%
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50 col-span-1 md:col-span-3">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Prediction Time (Latency)</div>
+                        <div className="text-2xl font-bold font-mono text-secondary">
+                          {analysis.mlDetails.predictionTimeMs} <span className="text-sm font-sans font-normal text-muted-foreground ml-1">ms</span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </TabsContent>
+
 
           {/* TAB: CHARTS */}
           <TabsContent value="charts" className="space-y-6 print:block">

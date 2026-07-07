@@ -47,3 +47,11 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+ml/Amazon Product Reviews.csv
+
+# Environment files
+.env
+.env.*
+**/.env
+**/.env.*

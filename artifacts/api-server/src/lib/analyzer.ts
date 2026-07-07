@@ -1,5 +1,7 @@
 import { getModel } from "./gemini";
 import { logger } from "./logger";
+import * as fs from "fs";
+import * as path from "path";
 
 export interface ReviewItem {
   review: string;
@@ -40,6 +42,70 @@ export interface AnalysisResult {
   predBuyRecommendation: string;
 }
 
+const STOP_WORDS = new Set([
+  "the", "a", "an", "and", "or", "but", "is", "was", "are", "were", "to", "for", 
+  "in", "on", "at", "by", "this", "that", "it", "with", "as", "of", "i", "you", 
+  "he", "she", "they", "we", "my", "your", "our", "their", "me", "him", "her", 
+  "us", "them", "this", "that", "these", "those", "have", "has", "had", "do", 
+  "does", "did", "will", "would", "shall", "should", "can", "could", "may", 
+  "might", "must", "about", "above", "after", "again", "against", "all", "am", 
+  "any", "because", "been", "before", "being", "below", "between", "both", 
+  "but", "cannot", "could", "during", "each", "few", "from", "further", 
+  "here", "how", "if", "into", "more", "most", "no", "nor", "not", "only", 
+  "other", "ought", "our", "ours", "ourselves", "out", "over", "own", "same", 
+  "so", "some", "such", "than", "then", "there", "their", "theirs", "themselves", 
+  "thence", "thereabout", "thereafter", "thereby", "therefore", "therein", 
+  "thereupon", "these", "they", "this", "those", "through", "to", "too", 
+  "under", "until", "up", "very", "was", "we", "were", "what", "when", "where", 
+  "which", "while", "who", "whom", "why", "with", "would", "you", "your", 
+  "yours", "yourself", "yourselves", "product", "reviews", "review", "one", "just",
+  "get", "got", "make", "made", "like", "love", "really"
+]);
+
+function extractKeywords(reviews: string[], count = 8): string[] {
+  const frequencies: Record<string, number> = {};
+  for (const text of reviews) {
+    const words = text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .map(w => w.trim())
+      .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+    
+    for (const w of words) {
+      frequencies[w] = (frequencies[w] ?? 0) + 1;
+    }
+  }
+  return Object.entries(frequencies)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, count)
+    .map(entry => entry[0]);
+}
+
+function extractTopPhrases(reviews: string[], count = 5): string[] {
+  const frequencies: Record<string, number> = {};
+  for (const text of reviews) {
+    const words = text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .map(w => w.trim())
+      .filter(w => w.length > 0);
+    
+    for (let i = 0; i < words.length - 1; i++) {
+      const phrase = `${words[i]} ${words[i + 1]}`;
+      if (words[i].length <= 2 || words[i + 1].length <= 2 || STOP_WORDS.has(words[i]) || STOP_WORDS.has(words[i + 1])) {
+        continue;
+      }
+      frequencies[phrase] = (frequencies[phrase] ?? 0) + 1;
+    }
+  }
+  return Object.entries(frequencies)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, count)
+    .map(entry => entry[0]);
+}
+
 async function callGemini(prompt: string): Promise<string> {
   const model = getModel("gemini-2.5-flash");
   const result = await model.generateContent({
@@ -54,100 +120,61 @@ async function callGemini(prompt: string): Promise<string> {
 
 export async function analyzeReviews(
   productName: string,
-  reviews: ReviewItem[]
+  reviews: ReviewItem[],
+  analysisId?: number
 ): Promise<AnalysisResult> {
-  const reviewTexts = reviews.map((r, i) => `${i + 1}. ${r.review}`).join("\n");
-
-  const sentimentPrompt = `You are a sentiment analysis AI. Analyze the sentiment of each of these product reviews for "${productName}".
-
-For EACH review, provide:
-- sentiment: "positive", "negative", or "neutral"
-- score: float from -1.0 (very negative) to 1.0 (very positive)
-- confidence: float from 0.0 to 1.0
-
-Reviews:
-${reviewTexts}
-
-Return a JSON object with a single key "results" containing an array of exactly ${reviews.length} objects:
-{"results": [{"sentiment":"positive","score":0.8,"confidence":0.95}, ...]}`;
-
-  const summaryPrompt = `You are an expert product analyst. Analyze these customer reviews for the product "${productName}" and provide a comprehensive analysis.
-
-Reviews:
-${reviewTexts.slice(0, 6000)}
-
-Return a JSON object with exactly these fields:
-{
-  "overallSummary": "2-3 sentence overall product summary based on the reviews",
-  "customerOpinion": "What customers generally think — 2 sentences",
-  "strengths": "Top 3-4 product strengths mentioned in reviews, as a comma-separated list",
-  "weaknesses": "Top 2-3 product weaknesses or complaints from reviews, as a comma-separated list",
-  "recommendation": "One clear sentence — should someone buy this product?",
-  "businessInsights": "2-3 actionable insights for the seller based on the reviews",
-  "positiveKeywords": ["word1", "word2", "word3", "word4", "word5", "word6", "word7", "word8"],
-  "negativeKeywords": ["word1", "word2", "word3", "word4", "word5"],
-  "topPhrases": ["phrase1", "phrase2", "phrase3", "phrase4", "phrase5"],
-  "predNextMonthPositivePct": 72.5,
-  "predNextMonthNegativePct": 15.2,
-  "predExpectedRating": 4.1,
-  "predSatisfactionScore": 78.3,
-  "predRiskScore": 22.4,
-  "predBuyRecommendation": "One sentence buy recommendation with reasoning"
-}`;
-
-  const [sentimentRaw, summaryRaw] = await Promise.all([
-    callGemini(sentimentPrompt).catch((e) => {
-      logger.warn({ err: e }, "Sentiment Gemini call failed");
-      return "{}";
-    }),
-    callGemini(summaryPrompt).catch((e) => {
-      logger.warn({ err: e }, "Summary Gemini call failed");
-      return "{}";
-    }),
-  ]);
-
-  // Parse sentiment
   let sentiments: SentimentResult[] = [];
+  let predictionTimeMs = 0;
+
   try {
-    const raw = JSON.parse(sentimentRaw);
-    const arr = Array.isArray(raw) ? raw : (raw.results ?? raw.sentiments ?? []);
-    sentiments = arr.slice(0, reviews.length).map((s: Record<string, unknown>) => ({
-      sentiment: (["positive", "negative", "neutral"].includes(String(s.sentiment))
-        ? s.sentiment
-        : "neutral") as "positive" | "negative" | "neutral",
-      score: typeof s.score === "number" ? s.score : 0,
-      confidence: typeof s.confidence === "number" ? s.confidence : 0.7,
-    }));
+    const startPredict = performance.now();
+    const response = await fetch("http://localhost:5001/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviews: reviews.map((r) => r.review) }),
+    });
+    const endPredict = performance.now();
+    predictionTimeMs = endPredict - startPredict;
+
+    if (!response.ok) {
+      throw new Error(`FastAPI predict server returned status ${response.status}`);
+    }
+
+    const data = (await response.json()) as { results: string[]; confidences: number[] };
+    sentiments = data.results.map((res, i) => {
+      const sentiment = res.toLowerCase() as "positive" | "negative" | "neutral";
+      const conf = data.confidences?.[i] ?? 0.8;
+      let score = 0;
+      if (sentiment === "positive") score = conf;
+      else if (sentiment === "negative") score = -conf;
+      return {
+        sentiment,
+        score,
+        confidence: conf,
+      };
+    });
   } catch (e) {
-    logger.warn({ err: e }, "Failed to parse sentiment response");
-  }
-  while (sentiments.length < reviews.length) {
-    sentiments.push({ sentiment: "neutral", score: 0, confidence: 0.5 });
+    logger.error({ err: e }, "Failed to get sentiment predictions from FastAPI server");
+    sentiments = reviews.map(() => ({
+      sentiment: "neutral",
+      score: 0,
+      confidence: 0.5,
+    }));
   }
 
-  // Parse summary
-  let summary = {
-    overallSummary: "Analysis complete.",
-    customerOpinion: "Mixed customer feedback.",
-    strengths: "Quality, Value",
-    weaknesses: "Shipping",
-    recommendation: "Recommended with reservations.",
-    businessInsights: "Focus on customer service.",
-    positiveKeywords: ["quality", "value", "great", "good", "love", "easy", "fast", "durable"],
-    negativeKeywords: ["slow", "issue", "problem", "cheap", "broken"],
-    topPhrases: ["great product", "good value", "fast shipping", "easy to use", "highly recommend"],
-    predNextMonthPositivePct: 70,
-    predNextMonthNegativePct: 15,
-    predExpectedRating: 4.0,
-    predSatisfactionScore: 75,
-    predRiskScore: 25,
-    predBuyRecommendation: "Recommended based on overall sentiment.",
-  };
-  try {
-    const raw = JSON.parse(summaryRaw);
-    summary = { ...summary, ...raw };
-  } catch (e) {
-    logger.warn({ err: e }, "Failed to parse summary response");
+  // Save prediction time
+  if (analysisId) {
+    try {
+      const timesPath = path.join(process.cwd(), "ml", "prediction_times.json");
+      let times: Record<string, number> = {};
+      if (fs.existsSync(timesPath)) {
+        times = JSON.parse(fs.readFileSync(timesPath, "utf-8"));
+      }
+      times[String(analysisId)] = Math.round(predictionTimeMs * 10) / 10;
+      fs.writeFileSync(timesPath, JSON.stringify(times, null, 2), "utf-8");
+    } catch (e) {
+      logger.warn({ err: e }, "Failed to write prediction time to JSON cache");
+    }
   }
 
   // Compute metrics
@@ -171,7 +198,70 @@ Return a JSON object with exactly these fields:
   const aiConfidence =
     sentiments.reduce((sum, s) => sum + s.confidence, 0) / Math.max(1, sentiments.length);
 
-  // Rating distribution
+  // Extract keywords and top phrases
+  const positiveReviewTexts = reviews
+    .filter((_, idx) => sentiments[idx].sentiment === "positive")
+    .map((r) => r.review);
+  const negativeReviewTexts = reviews
+    .filter((_, idx) => sentiments[idx].sentiment === "negative")
+    .map((r) => r.review);
+  const allReviewTexts = reviews.map((r) => r.review);
+
+  const positiveKeywords = extractKeywords(positiveReviewTexts, 8);
+  const negativeKeywords = extractKeywords(negativeReviewTexts, 5);
+  const topPhrases = extractTopPhrases(allReviewTexts, 5);
+
+  const summaryPrompt = `You are an expert product analyst. Review the following machine learning sentiment analysis results for the product "${productName}":
+
+- Total Reviews: ${total}
+- Positive Sentiment percentage: ${positivePct.toFixed(1)}%
+- Negative Sentiment percentage: ${negativePct.toFixed(1)}%
+- Neutral Sentiment percentage: ${neutralPct.toFixed(1)}%
+- Average ML Classification Confidence: ${(aiConfidence * 100).toFixed(1)}%
+- Top Positive Keywords: ${positiveKeywords.join(", ")}
+- Top Negative Keywords: ${negativeKeywords.join(", ")}
+- Common Themes / Key Phrases: ${topPhrases.join(", ")}
+
+Based ONLY on this aggregated sentiment analysis, generate a comprehensive product analysis.
+Return a JSON object with exactly these fields:
+{
+  "overallSummary": "2-3 sentence overall product summary based on the reviews",
+  "customerOpinion": "What customers generally think — 2 sentences",
+  "strengths": "Top 3-4 product strengths, as a comma-separated list",
+  "weaknesses": "Top 2-3 product weaknesses or complaints, as a comma-separated list",
+  "recommendation": "One clear sentence — should someone buy this product?",
+  "businessInsights": "2-3 actionable insights for the seller based on the reviews",
+  "predNextMonthPositivePct": float (e.g. 72.5),
+  "predNextMonthNegativePct": float (e.g. 15.2),
+  "predExpectedRating": float (e.g. 4.1),
+  "predSatisfactionScore": float (e.g. 78.3),
+  "predRiskScore": float (e.g. 22.4),
+  "predBuyRecommendation": "One sentence buy recommendation with reasoning"
+}`;
+
+  let summary = {
+    overallSummary: "Analysis complete.",
+    customerOpinion: "Mixed customer feedback.",
+    strengths: "Quality, Value",
+    weaknesses: "Shipping",
+    recommendation: "Recommended with reservations.",
+    businessInsights: "Focus on customer service.",
+    predNextMonthPositivePct: 70,
+    predNextMonthNegativePct: 15,
+    predExpectedRating: 4.0,
+    predSatisfactionScore: 75,
+    predRiskScore: 25,
+    predBuyRecommendation: "Recommended based on overall sentiment.",
+  };
+
+  try {
+    const summaryRaw = await callGemini(summaryPrompt);
+    const raw = JSON.parse(summaryRaw);
+    summary = { ...summary, ...raw };
+  } catch (e) {
+    logger.warn({ err: e }, "Failed to get/parse Gemini summary response");
+  }
+
   const ratingDistribution: Record<string, number> = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 };
   for (const r of reviews) {
     if (r.rating != null) {
@@ -182,7 +272,6 @@ Return a JSON object with exactly these fields:
     }
   }
 
-  // Sentiment timeline
   const monthMap = new Map<string, { positive: number; negative: number; neutral: number; total: number }>();
   for (let i = 0; i < reviews.length; i++) {
     const rev = reviews[i];
@@ -221,10 +310,14 @@ Return a JSON object with exactly these fields:
     sentimentScore: Math.round(sentimentScore * 1000) / 1000,
     aiConfidence: Math.round(aiConfidence * 1000) / 1000,
     ...summary,
+    positiveKeywords,
+    negativeKeywords,
+    topPhrases,
     ratingDistribution,
     sentimentTimeline,
   };
 }
+
 
 /** Strip HTML tags and collapse whitespace. */
 function stripHtml(html: string): string {
