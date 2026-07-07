@@ -55,3 +55,8 @@ ml/Amazon Product Reviews.csv
 .env.*
 **/.env
 **/.env.*
+
+node_modules/
+dist/
+artifacts/**/node_modules/
+artifacts/**/dist/

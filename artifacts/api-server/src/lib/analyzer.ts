@@ -43,21 +43,21 @@ export interface AnalysisResult {
 }
 
 const STOP_WORDS = new Set([
-  "the", "a", "an", "and", "or", "but", "is", "was", "are", "were", "to", "for", 
-  "in", "on", "at", "by", "this", "that", "it", "with", "as", "of", "i", "you", 
-  "he", "she", "they", "we", "my", "your", "our", "their", "me", "him", "her", 
-  "us", "them", "this", "that", "these", "those", "have", "has", "had", "do", 
-  "does", "did", "will", "would", "shall", "should", "can", "could", "may", 
-  "might", "must", "about", "above", "after", "again", "against", "all", "am", 
-  "any", "because", "been", "before", "being", "below", "between", "both", 
-  "but", "cannot", "could", "during", "each", "few", "from", "further", 
-  "here", "how", "if", "into", "more", "most", "no", "nor", "not", "only", 
-  "other", "ought", "our", "ours", "ourselves", "out", "over", "own", "same", 
-  "so", "some", "such", "than", "then", "there", "their", "theirs", "themselves", 
-  "thence", "thereabout", "thereafter", "thereby", "therefore", "therein", 
-  "thereupon", "these", "they", "this", "those", "through", "to", "too", 
-  "under", "until", "up", "very", "was", "we", "were", "what", "when", "where", 
-  "which", "while", "who", "whom", "why", "with", "would", "you", "your", 
+  "the", "a", "an", "and", "or", "but", "is", "was", "are", "were", "to", "for",
+  "in", "on", "at", "by", "this", "that", "it", "with", "as", "of", "i", "you",
+  "he", "she", "they", "we", "my", "your", "our", "their", "me", "him", "her",
+  "us", "them", "this", "that", "these", "those", "have", "has", "had", "do",
+  "does", "did", "will", "would", "shall", "should", "can", "could", "may",
+  "might", "must", "about", "above", "after", "again", "against", "all", "am",
+  "any", "because", "been", "before", "being", "below", "between", "both",
+  "but", "cannot", "could", "during", "each", "few", "from", "further",
+  "here", "how", "if", "into", "more", "most", "no", "nor", "not", "only",
+  "other", "ought", "our", "ours", "ourselves", "out", "over", "own", "same",
+  "so", "some", "such", "than", "then", "there", "their", "theirs", "themselves",
+  "thence", "thereabout", "thereafter", "thereby", "therefore", "therein",
+  "thereupon", "these", "they", "this", "those", "through", "to", "too",
+  "under", "until", "up", "very", "was", "we", "were", "what", "when", "where",
+  "which", "while", "who", "whom", "why", "with", "would", "you", "your",
   "yours", "yourself", "yourselves", "product", "reviews", "review", "one", "just",
   "get", "got", "make", "made", "like", "love", "really"
 ]);
@@ -71,7 +71,7 @@ function extractKeywords(reviews: string[], count = 8): string[] {
       .split(/\s+/)
       .map(w => w.trim())
       .filter(w => w.length > 2 && !STOP_WORDS.has(w));
-    
+
     for (const w of words) {
       frequencies[w] = (frequencies[w] ?? 0) + 1;
     }
@@ -91,7 +91,7 @@ function extractTopPhrases(reviews: string[], count = 5): string[] {
       .split(/\s+/)
       .map(w => w.trim())
       .filter(w => w.length > 0);
-    
+
     for (let i = 0; i < words.length - 1; i++) {
       const phrase = `${words[i]} ${words[i + 1]}`;
       if (words[i].length <= 2 || words[i + 1].length <= 2 || STOP_WORDS.has(words[i]) || STOP_WORDS.has(words[i + 1])) {
@@ -117,6 +117,8 @@ async function callGemini(prompt: string): Promise<string> {
   });
   return result.response.text();
 }
+const ML_API_URL =
+  process.env.ML_API_URL || "http://localhost:5001";
 
 export async function analyzeReviews(
   productName: string,
@@ -128,7 +130,7 @@ export async function analyzeReviews(
 
   try {
     const startPredict = performance.now();
-    const response = await fetch("http://localhost:5001/predict", {
+    const response = await fetch(`${ML_API_URL}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reviews: reviews.map((r) => r.review) }),
