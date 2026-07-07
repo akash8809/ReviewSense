@@ -22,9 +22,11 @@ export default defineConfig({
 
     proxy: {
       "/api": {
-        target: "http://localhost:3001",
+        target:
+          process.env.VITE_API_URL ||
+          "https://reviewsense-api-pu7k.onrender.com",
         changeOrigin: true,
-        secure: false,
+        secure: true,
       },
     },
   },
