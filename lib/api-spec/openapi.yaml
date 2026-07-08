@@ -418,6 +418,8 @@ components:
         status:
           type: string
           enum: [pending, processing, completed, failed]
+        errorMessage:
+          type: ["string", "null"]
         reviewCount:
           type: integer
         positivePct:

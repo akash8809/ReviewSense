@@ -23,6 +23,8 @@ export interface Analysis {
   /** @nullable */
   productPrice?: string | null;
   status: AnalysisStatus;
+  /** @nullable */
+  errorMessage?: string | null;
   reviewCount: number;
   positivePct: number;
   negativePct: number;

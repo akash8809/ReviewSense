@@ -12,6 +12,7 @@ export const analysesTable = pgTable("analyses", {
   productCategory: text("product_category"),
   productPrice: text("product_price"),
   status: text("status").notNull().default("pending"),
+  errorMessage: text("error_message"),
   reviewCount: integer("review_count").notNull().default(0),
   positivePct: real("positive_pct").notNull().default(0),
   negativePct: real("negative_pct").notNull().default(0),
@@ -36,7 +37,7 @@ export const analysesTable = pgTable("analyses", {
   predBuyRecommendation: text("pred_buy_recommendation"),
   ratingDistribution: text("rating_distribution"),
   sentimentTimeline: text("sentiment_timeline"),
-  shareToken: text("share_token").unique(),
+  shareToken: text("share_token"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });

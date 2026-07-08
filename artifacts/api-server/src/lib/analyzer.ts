@@ -398,6 +398,18 @@ function extractPageText(html: string, maxChars = 8000): { text: string; imageUr
     (html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i) ?? [])[1] ?? "";
   const ogImage =
     (html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ?? [])[1] ?? "";
+  const twitterImage =
+    (html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i) ?? [])[1] ?? "";
+  
+  const landingImageMatch = html.match(/id=["']landingImage["'][^>]+src=["']([^"']+)["']/i) ??
+                            html.match(/src=["']([^"']+)["'][^>]+id=["']landingImage["']/i);
+  const landingImage = landingImageMatch ? landingImageMatch[1] : "";
+
+  const mainImageMatch = html.match(/id=["']main-image["'][^>]+src=["']([^"']+)["']/i) ??
+                         html.match(/src=["']([^"']+)["'][^>]+id=["']main-image["']/i);
+  const mainImage = mainImageMatch ? mainImageMatch[1] : "";
+
+  const productImageUrl = ogImage || twitterImage || landingImage || mainImage || "";
 
   const bodyText = stripHtml(html).slice(0, maxChars);
 
@@ -409,7 +421,30 @@ function extractPageText(html: string, maxChars = 8000): { text: string; imageUr
     `PAGE TEXT:\n${bodyText}`,
   ].filter(Boolean);
 
-  return { text: parts.join("\n\n"), imageUrl: ogImage };
+  return { text: parts.join("\n\n"), imageUrl: productImageUrl };
+}
+
+/** Detect if the scraped HTML represents a block or CAPTCHA from Amazon */
+function detectBlock(html: string): string | null {
+  if (!html || html.trim().length < 200) {
+    return "Empty or extremely short HTML returned";
+  }
+  const lower = html.toLowerCase();
+  if (lower.includes("robot check") || lower.includes("sorry, we just need to make sure you're not a robot") || lower.includes("api-services-support@amazon.com")) {
+    return "Amazon Robot Check/CAPTCHA page detected";
+  }
+  if (lower.includes("captcha")) {
+    return "CAPTCHA page detected";
+  }
+  if (lower.includes("access denied")) {
+    return "Access Denied detected";
+  }
+  if (lower.includes("sign-in") || lower.includes("signin") || lower.includes("sign in")) {
+    if (lower.includes("amazon sign-in") || lower.includes("sign in to your account")) {
+      return "Amazon Sign-In page redirect detected";
+    }
+  }
+  return null;
 }
 
 /** Fetch product page HTML with a browser-like User-Agent. */
@@ -429,10 +464,25 @@ async function fetchPageHtml(url: string): Promise<string | null> {
       },
     });
     clearTimeout(timeout);
-    if (!res.ok) return null;
+
+    // 2. Log the HTTP response status.
+    console.log(`[DEBUG] Scraper HTTP Status: ${res.status} for URL: ${url}`);
+    // 3. Log the final URL after redirects.
+    console.log(`[DEBUG] Scraper Final URL after redirects: ${res.url}`);
+
+    if (!res.ok) {
+      console.warn(`[DEBUG] Scraper fetch failed with status: ${res.status}`);
+      return null;
+    }
     const contentType = res.headers.get("content-type") ?? "";
-    if (!contentType.includes("text/html")) return null;
-    return await res.text();
+    if (!contentType.includes("text/html")) {
+      console.warn(`[DEBUG] Scraper ignored non-HTML content type: ${contentType}`);
+      return null;
+    }
+    const text = await res.text();
+    // Log HTML length.
+    console.log(`[DEBUG] Scraper HTML length: ${text.length} characters`);
+    return text;
   } catch (e) {
     logger.warn({ err: e, url }, "Page fetch failed");
     return null;
@@ -448,20 +498,31 @@ export async function extractProductInfo(url: string): Promise<{
   sampleReviews: ReviewItem[];
 }> {
   const html = await fetchPageHtml(url);
-  let pageContext = "";
-  let scrapedImageUrl = "";
 
-  if (html) {
-    const extracted = extractPageText(html);
-    pageContext = extracted.text;
-    scrapedImageUrl = extracted.imageUrl;
-    logger.info({ url, chars: pageContext.length }, "Scraped product page");
-  } else {
-    logger.warn({ url }, "Could not fetch page — falling back to URL-only inference");
+  // 4. Detect if Amazon returned: CAPTCHA, Robot Check, Access Denied, Sign In page, or Empty HTML.
+  if (!html) {
+    console.error("[ERROR] Amazon product could not be scraped. Empty HTML or fetch failed.");
+    throw new Error("Amazon product could not be scraped. Amazon blocked the request or no reviews were extracted.");
   }
 
-  const prompt = html
-    ? `You are a product data extractor. A user submitted this e-commerce URL for review analysis:
+  const blockReason = detectBlock(html);
+  if (blockReason) {
+    console.error(`[ERROR] Amazon product could not be scraped. Block detected: ${blockReason}`);
+    throw new Error("Amazon product could not be scraped. Amazon blocked the request or no reviews were extracted.");
+  }
+
+  const extracted = extractPageText(html);
+  const pageContext = extracted.text;
+  const scrapedImageUrl = extracted.imageUrl;
+  
+  // Log metadata extracted from regex
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const regexTitle = titleMatch ? stripHtml(titleMatch[1]) : "";
+  console.log(`[DEBUG] Scraper HTML title found: "${regexTitle}"`);
+  console.log(`[DEBUG] Scraper HTML image found: "${scrapedImageUrl}"`);
+
+  // Prompt Gemini to extract detailed product info and reviews
+  const prompt = `You are a product data extractor. A user submitted this e-commerce URL for review analysis:
 URL: ${url}
 
 Here is the actual scraped page content:
@@ -484,48 +545,56 @@ Return JSON:
     {"review": "...", "rating": 5, "date": "2024-06-15"},
     ... 20 total items
   ]
-}`
-    : `You are a product data extractor. Decode this e-commerce product URL to identify the exact product:
-URL: ${url}
-
-Use the URL slug, ASIN, keywords, and domain to infer:
-- Exact product name
-- Brand / manufacturer
-- Category
-- Approximate price
-
-Then generate 20 realistic, SPECIFIC customer reviews for THIS product.
-Reviews must reflect this specific product's features, problems, and use cases — not a generic product type.
-Mix: ~60% positive (4-5★), ~20% neutral (3★), ~20% negative (1-2★).
-
-Return JSON:
-{
-  "productName": "...",
-  "productBrand": "...",
-  "productCategory": "...",
-  "productPrice": "$XX.XX or null",
-  "reviews": [
-    {"review": "...", "rating": 4, "date": "2024-05-10"},
-    ... 20 total items
-  ]
 }`;
 
   try {
     const raw = await callGemini(prompt);
     const data = JSON.parse(raw);
+
+    const productName = data.productName ? data.productName.trim() : "";
+    const productImageUrl = scrapedImageUrl || undefined;
+    const reviews = Array.isArray(data.reviews) ? data.reviews : [];
+
+    // 5. Log: Product title, Product image, Rating, Number of reviews, Number of extracted review texts.
+    console.log(`[DEBUG] Extracted productName: "${productName}"`);
+    console.log(`[DEBUG] Extracted productImageUrl: "${productImageUrl}"`);
+    console.log(`[DEBUG] Extracted reviews count: ${reviews.length}`);
+
+    // 6. Print the first 3 extracted reviews.
+    if (reviews.length > 0) {
+      console.log("[DEBUG] First 3 extracted reviews:");
+      reviews.slice(0, 3).forEach((r: any, idx: number) => {
+        console.log(`  Review #${idx + 1}: Rating ${r.rating} - "${r.review}"`);
+      });
+    }
+
+    // 7. Validate extraction. If productName, reviews, or productImageUrl is missing, stop analysis.
+    // Ensure we do not accept generic placeholder names.
+    if (!productName || productName.toLowerCase().includes("product from") || productName.toLowerCase().includes("product") && productName.toLowerCase().includes("amazon") || productName === "www.amazon.in Product" || productName === "www.amazon.com Product") {
+      console.error(`[ERROR] Validation failed: productName is missing, generic, or invalid ("${productName}")`);
+      throw new Error("Amazon product could not be scraped. Amazon blocked the request or no reviews were extracted.");
+    }
+
+    if (reviews.length === 0) {
+      console.error("[ERROR] Validation failed: no reviews extracted.");
+      throw new Error("Amazon product could not be scraped. Amazon blocked the request or no reviews were extracted.");
+    }
+
+    if (!productImageUrl) {
+      console.error("[ERROR] Validation failed: productImageUrl is missing.");
+      throw new Error("Amazon product could not be scraped. Amazon blocked the request or no reviews were extracted.");
+    }
+
     return {
-      productName: data.productName ?? new URL(url).hostname + " Product",
+      productName,
       productBrand: data.productBrand ?? undefined,
-      productImageUrl: scrapedImageUrl || undefined,
+      productImageUrl,
       productCategory: data.productCategory ?? undefined,
       productPrice: data.productPrice ?? undefined,
-      sampleReviews: Array.isArray(data.reviews) ? data.reviews : [],
+      sampleReviews: reviews,
     };
   } catch (e) {
-    logger.error({ err: e }, "Failed to extract product info via Gemini");
-    return {
-      productName: "Product from " + new URL(url).hostname,
-      sampleReviews: [],
-    };
+    console.error("[ERROR] Exception in extractProductInfo pipeline:", e);
+    throw new Error("Amazon product could not be scraped. Amazon blocked the request or no reviews were extracted.");
   }
 }

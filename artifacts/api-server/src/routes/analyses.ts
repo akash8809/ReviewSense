@@ -102,6 +102,7 @@ function formatAnalysis(a: Record<string, unknown>) {
     ratingDistribution: a.ratingDistribution ?? null,
     sentimentTimeline: a.sentimentTimeline ?? null,
     shareToken: a.shareToken ?? null,
+    errorMessage: (a.errorMessage as string) ?? null,
     createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : a.createdAt,
     completedAt: a.completedAt instanceof Date ? a.completedAt.toISOString() : (a.completedAt ?? null),
     mlDetails
@@ -344,9 +345,10 @@ async function processAnalysis(analysisId: number, productUrl: string, userId: n
     });
   } catch (err) {
     logger.error({ err, analysisId }, "Analysis processing failed");
+    const errMsg = err instanceof Error ? err.message : "Something went wrong during processing.";
     await db
       .update(analysesTable)
-      .set({ status: "failed" })
+      .set({ status: "failed", errorMessage: errMsg })
       .where(eq(analysesTable.id, analysisId));
   }
 }
@@ -360,9 +362,10 @@ async function processCsvAnalysis(
     await runAnalysis(analysisId, productName, reviews, {});
   } catch (err) {
     logger.error({ err, analysisId }, "CSV analysis processing failed");
+    const errMsg = err instanceof Error ? err.message : "Something went wrong during processing.";
     await db
       .update(analysesTable)
-      .set({ status: "failed" })
+      .set({ status: "failed", errorMessage: errMsg })
       .where(eq(analysesTable.id, analysisId));
   }
 }

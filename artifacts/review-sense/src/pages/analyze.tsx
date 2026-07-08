@@ -55,7 +55,7 @@ export default function AnalyzePage() {
         toast({ title: "Analysis Complete", description: "Navigating to results..." });
         setTimeout(() => setLocation(`/result/${analysis.id}`), 1000);
       } else if (analysis.status === 'failed') {
-        toast({ variant: "destructive", title: "Analysis Failed", description: "Something went wrong during processing." });
+        toast({ variant: "destructive", title: "Analysis Failed", description: analysis.errorMessage || "Something went wrong during processing." });
         setPollingId(null);
       }
     }
