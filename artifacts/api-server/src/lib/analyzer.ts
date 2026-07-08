@@ -130,31 +130,70 @@ export async function analyzeReviews(
 
   try {
     const startPredict = performance.now();
+
+    // 1. Before calling the ML API print
+    console.log("ML_API_URL:", ML_API_URL);
+    console.log("Sending reviews:", reviews.length);
+
+    const payload = { reviews: reviews.map((r) => r.review) };
+
+    // 4. Print the exact payload sent to the ML service.
+    console.log("[DEBUG] Payload sent to ML service:", JSON.stringify(payload, null, 2));
+
     const response = await fetch(`${ML_API_URL}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reviews: reviews.map((r) => r.review) }),
+      body: JSON.stringify(payload),
     });
     const endPredict = performance.now();
     predictionTimeMs = endPredict - startPredict;
 
+    // 2. Print the HTTP response status and headers.
+    console.log("[DEBUG] ML HTTP Response Status:", response.status);
+    console.log("[DEBUG] ML HTTP Response Headers:");
+    response.headers.forEach((val, key) => console.log(`  ${key}: ${val}`));
+
+    // 3. If the response is not 200, print the full error. Never silently fall back to Neutral.
     if (!response.ok) {
-      throw new Error(`FastAPI predict server returned status ${response.status}`);
+      const errBody = await response.text();
+      console.error(`[ERROR] ML service failed with status ${response.status}. Response body:`, errBody);
+      throw new Error(`FastAPI predict server returned status ${response.status}: ${errBody}`);
     }
 
-    const data = (await response.json()) as { results: string[]; confidences: number[] };
+    const rawBody = await response.text();
+    // 5. Print the exact JSON returned from the ML service.
+    console.log("[DEBUG] ML HTTP Response Body (Raw JSON):", rawBody);
+
+    const data = JSON.parse(rawBody) as { results: any[]; confidences: number[] };
+
     sentiments = data.results.map((res, i) => {
-      const sentiment = res.toLowerCase() as "positive" | "negative" | "neutral";
+      // 6. Verify mapping. Do NOT assume mapping. Print every prediction.
+      let sentiment: "positive" | "negative" | "neutral" = "neutral";
+      const rawPredStr = String(res);
+      const rawPredLower = rawPredStr.toLowerCase();
+
+      // Support 0 -> Negative, 1 -> Neutral, 2 -> Positive, or string labels
+      if (rawPredLower === "positive" || rawPredStr === "2") {
+        sentiment = "positive";
+      } else if (rawPredLower === "negative" || rawPredStr === "0") {
+        sentiment = "negative";
+      } else if (rawPredLower === "neutral" || rawPredStr === "1") {
+        sentiment = "neutral";
+      } else {
+        console.warn(`[WARN] Unknown prediction value: "${res}", mapped to neutral.`);
+        sentiment = "neutral";
+      }
+
       const conf = data.confidences?.[i] ?? 0.8;
       let score = 0;
       if (sentiment === "positive") score = conf;
       else if (sentiment === "negative") score = -conf;
 
-      // Temporary debug logs
-      console.log(`[DEBUG] analyzer.ts sentiment mapping:`);
-      console.log(`  Original review: "${reviews[i].review}"`);
-      console.log(`  Raw prediction: "${res}"`);
-      console.log(`  Mapped sentiment: "${sentiment}"`);
+      // 7. Verify that analyzer.ts is not overwriting the ML prediction.
+      console.log(`[DEBUG] Prediction details for review #${i}:`);
+      console.log(`  Raw prediction: ${res}`);
+      console.log(`  Mapped sentiment: ${sentiment}`);
+      console.log(`  Final sentiment: ${sentiment}`);
       console.log(`  Confidence: ${conf}`);
       console.log(`  Score: ${score}`);
 
@@ -165,12 +204,9 @@ export async function analyzeReviews(
       };
     });
   } catch (e) {
-    logger.error({ err: e }, "Failed to get sentiment predictions from FastAPI server");
-    sentiments = reviews.map(() => ({
-      sentiment: "neutral",
-      score: 0,
-      confidence: 0.5,
-    }));
+    // 8. If any exception occurs, print the full stack trace instead of returning Neutral.
+    console.error("[CRITICAL ERROR] Exception in ML prediction pipeline:", e);
+    throw e;
   }
 
   // Save prediction time
