@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GitCompareArrows, TrendingUp, TrendingDown, Star, Brain, Target } from "lucide-react";
+import { motion } from "framer-motion";
 
 function AnalysisSelector({
   label, value, onChange, excludeId,
@@ -37,6 +38,21 @@ function AnalysisColumn({ id }: { id: number }) {
     query: { queryKey: getGetAnalysisQueryKey(id) },
   });
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.08
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 12 },
+    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 260, damping: 22 } }
+  };
+
   if (isLoading) return (
     <div className="space-y-4 p-4">
       {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
@@ -47,86 +63,101 @@ function AnalysisColumn({ id }: { id: number }) {
   const sentimentColor = data.positivePct > 60 ? "text-green-500" : data.positivePct > 40 ? "text-yellow-500" : "text-destructive";
 
   return (
-    <div className="space-y-4">
+    <motion.div 
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+      className="space-y-4"
+    >
       {/* Product header */}
-      <Card className="glass-panel border-primary/20">
-        <CardContent className="pt-4">
-          {data.productImageUrl && (
-            <img src={data.productImageUrl} alt={data.productName} className="w-16 h-16 object-contain rounded-lg mb-3 bg-white p-1" />
-          )}
-          {data.productBrand && <p className="text-xs font-bold text-primary uppercase tracking-wider">{data.productBrand}</p>}
-          <h3 className="font-bold text-lg leading-tight">{data.productName}</h3>
-          {data.productCategory && <p className="text-xs text-muted-foreground mt-1">{data.productCategory}</p>}
-          {data.productPrice && <p className="text-sm font-medium mt-1">{data.productPrice}</p>}
-        </CardContent>
-      </Card>
+      <motion.div variants={itemVariants}>
+        <Card className="glass-panel border-primary/20 shadow-md">
+          <CardContent className="pt-4">
+            {data.productImageUrl && (
+              <img src={data.productImageUrl} alt={data.productName} className="w-16 h-16 object-contain rounded-lg mb-3 bg-white p-1" />
+            )}
+            {data.productBrand && <p className="text-xs font-bold text-primary uppercase tracking-wider">{data.productBrand}</p>}
+            <h3 className="font-bold text-lg leading-tight text-foreground">{data.productName}</h3>
+            {data.productCategory && <p className="text-xs text-muted-foreground mt-1">{data.productCategory}</p>}
+            {data.productPrice && <p className="text-sm font-medium mt-1">{data.productPrice}</p>}
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Scores */}
-      <Card className="glass-panel">
-        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Brain className="w-4 h-4 text-primary" /> Sentiment Scores</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-green-500 font-medium">Positive</span>
-              <span className="font-mono font-bold">{data.positivePct.toFixed(1)}%</span>
+      <motion.div variants={itemVariants}>
+        <Card className="glass-panel shadow-md">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 font-semibold"><Brain className="w-4 h-4 text-primary" /> Sentiment Scores</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-green-500 font-medium">Positive</span>
+                <span className="font-mono font-bold">{data.positivePct.toFixed(1)}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${data.positivePct}%` }} />
+              </div>
             </div>
-            <div className="h-2 rounded-full bg-muted overflow-hidden">
-              <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${data.positivePct}%` }} />
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-muted-foreground font-medium">Neutral</span>
+                <span className="font-mono font-bold">{data.neutralPct.toFixed(1)}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div className="h-full rounded-full bg-muted-foreground/50 transition-all" style={{ width: `${data.neutralPct}%` }} />
+              </div>
             </div>
-          </div>
-          <div>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-muted-foreground font-medium">Neutral</span>
-              <span className="font-mono font-bold">{data.neutralPct.toFixed(1)}%</span>
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-destructive font-medium">Negative</span>
+                <span className="font-mono font-bold">{data.negativePct.toFixed(1)}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div className="h-full rounded-full bg-destructive transition-all" style={{ width: `${data.negativePct}%` }} />
+              </div>
             </div>
-            <div className="h-2 rounded-full bg-muted overflow-hidden">
-              <div className="h-full rounded-full bg-muted-foreground/50 transition-all" style={{ width: `${data.neutralPct}%` }} />
+            <div className="pt-2 flex justify-between border-t border-border/50">
+              <span className="text-sm text-muted-foreground">AI Score</span>
+              <span className={`font-mono font-bold text-lg ${sentimentColor}`}>{data.sentimentScore?.toFixed(1) ?? "—"}</span>
             </div>
-          </div>
-          <div>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-destructive font-medium">Negative</span>
-              <span className="font-mono font-bold">{data.negativePct.toFixed(1)}%</span>
-            </div>
-            <div className="h-2 rounded-full bg-muted overflow-hidden">
-              <div className="h-full rounded-full bg-destructive transition-all" style={{ width: `${data.negativePct}%` }} />
-            </div>
-          </div>
-          <div className="pt-2 flex justify-between border-t border-border/50">
-            <span className="text-sm text-muted-foreground">AI Score</span>
-            <span className={`font-mono font-bold text-lg ${sentimentColor}`}>{data.sentimentScore?.toFixed(1) ?? "—"}</span>
-          </div>
-          {data.avgRating != null && (
+            {data.avgRating != null && (
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground flex items-center gap-1"><Star className="w-3 h-3 text-yellow-500 fill-current" /> Avg Rating</span>
+                <span className="font-mono font-bold">{data.avgRating.toFixed(1)} / 5.0</span>
+              </div>
+            )}
             <div className="flex justify-between">
-              <span className="text-sm text-muted-foreground flex items-center gap-1"><Star className="w-3 h-3" /> Avg Rating</span>
-              <span className="font-mono font-bold">{data.avgRating.toFixed(1)} / 5.0</span>
+              <span className="text-sm text-muted-foreground">Reviews</span>
+              <span className="font-mono font-bold">{data.reviewCount.toLocaleString()}</span>
             </div>
-          )}
-          <div className="flex justify-between">
-            <span className="text-sm text-muted-foreground">Reviews</span>
-            <span className="font-mono font-bold">{data.reviewCount.toLocaleString()}</span>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Strengths */}
-      <Card className="glass-panel border-green-500/20 bg-green-500/5">
-        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-green-500"><TrendingUp className="w-4 h-4" /> Strengths</CardTitle></CardHeader>
-        <CardContent><p className="text-sm leading-relaxed">{data.strengths ?? "—"}</p></CardContent>
-      </Card>
+      <motion.div variants={itemVariants}>
+        <Card className="glass-panel border-green-500/20 bg-green-500/5 shadow-md">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-green-500"><TrendingUp className="w-4 h-4" /> Strengths</CardTitle></CardHeader>
+          <CardContent><p className="text-sm leading-relaxed">{data.strengths ?? "—"}</p></CardContent>
+        </Card>
+      </motion.div>
 
       {/* Weaknesses */}
-      <Card className="glass-panel border-destructive/20 bg-destructive/5">
-        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-destructive"><TrendingDown className="w-4 h-4" /> Weaknesses</CardTitle></CardHeader>
-        <CardContent><p className="text-sm leading-relaxed">{data.weaknesses ?? "—"}</p></CardContent>
-      </Card>
+      <motion.div variants={itemVariants}>
+        <Card className="glass-panel border-destructive/20 bg-destructive/5 shadow-md">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-destructive"><TrendingDown className="w-4 h-4" /> Weaknesses</CardTitle></CardHeader>
+          <CardContent><p className="text-sm leading-relaxed">{data.weaknesses ?? "—"}</p></CardContent>
+        </Card>
+      </motion.div>
 
       {/* Recommendation */}
-      <Card className="glass-panel border-secondary/30 bg-secondary/5">
-        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Target className="w-4 h-4 text-secondary" /> AI Verdict</CardTitle></CardHeader>
-        <CardContent><p className="text-sm font-medium">{data.predBuyRecommendation ?? "—"}</p></CardContent>
-      </Card>
-    </div>
+      <motion.div variants={itemVariants}>
+        <Card className="glass-panel border-secondary/30 bg-secondary/5 shadow-md">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Target className="w-4 h-4 text-secondary" /> AI Verdict</CardTitle></CardHeader>
+          <CardContent><p className="text-sm font-medium">{data.predBuyRecommendation ?? "—"}</p></CardContent>
+        </Card>
+      </motion.div>
+    </motion.div>
   );
 }
 

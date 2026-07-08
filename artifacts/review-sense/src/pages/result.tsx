@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { useParams, Link, useLocation } from "wouter";
 import { 
@@ -17,13 +17,50 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Activity, Star, TrendingUp, TrendingDown, Download, ArrowLeft,
-  Brain, Target, Briefcase, FileText, Share2, RefreshCw
+  Brain, Target, Briefcase, FileText, Share2, RefreshCw, Loader2
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line 
 } from "recharts";
+
+// Count-up helper component
+function CountUp({ value, duration = 1.0 }: { value: number | string; duration?: number }) {
+  const numericValue = typeof value === "number" ? value : parseFloat(String(value).replace(/[^0-9.]/g, ""));
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    if (isNaN(numericValue)) return;
+    let start = 0;
+    const end = numericValue;
+    if (start === end) {
+      setCount(end);
+      return;
+    }
+
+    const totalMiliseconds = duration * 1000;
+    const startTime = Date.now();
+    
+    const timer = setInterval(() => {
+      const timePassed = Date.now() - startTime;
+      const progress = Math.min(timePassed / totalMiliseconds, 1);
+      const easeProgress = progress * (2 - progress); // Ease out quad
+      const current = start + easeProgress * (end - start);
+      
+      setCount(current);
+
+      if (progress === 1) {
+        clearInterval(timer);
+      }
+    }, 16);
+
+    return () => clearInterval(timer);
+  }, [numericValue, duration]);
+
+  if (isNaN(numericValue)) return <>{value}</>;
+  return <>{numericValue % 1 === 0 ? Math.round(count).toLocaleString() : count.toFixed(1)}</>;
+}
 
 export default function ResultPage() {
   const { id } = useParams<{ id: string }>();
@@ -40,6 +77,48 @@ export default function ResultPage() {
   const { data: reviewsData, isLoading: reviewsLoading } = useGetAnalysisReviews(analysisId, {
     query: { queryKey: getGetAnalysisReviewsQueryKey(analysisId) }
   });
+
+  // Client-side reviews lazy-loading system
+  const [visibleCount, setVisibleCount] = useState(10);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!reviewsData || visibleCount >= reviewsData.items.length) return;
+    
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setTimeout(() => {
+          setVisibleCount((prev) => Math.min(prev + 10, reviewsData.items.length));
+        }, 350);
+      }
+    }, { threshold: 0.1 });
+    
+    const currentRef = loadMoreRef.current;
+    if (currentRef) {
+      observer.observe(currentRef);
+    }
+    
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef);
+      }
+    };
+  }, [reviewsData, visibleCount]);
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.08
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 15 },
+    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 260, damping: 22 } }
+  };
 
   const handleShare = async () => {
     setSharing(true);
@@ -205,13 +284,21 @@ export default function ResultPage() {
           
           <div className="flex flex-col md:flex-row gap-8 items-start relative z-10">
             {analysis.productImageUrl ? (
-              <div className="w-32 h-32 md:w-48 md:h-48 rounded-xl bg-white border p-2 shrink-0 flex items-center justify-center">
+              <motion.div 
+                animate={{ y: [0, -6, 0] }}
+                transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+                className="w-32 h-32 md:w-48 md:h-48 rounded-xl bg-white border p-2 shrink-0 flex items-center justify-center shadow-lg hover:shadow-primary/10 transition-all duration-300"
+              >
                 <img src={analysis.productImageUrl} alt={analysis.productName} className="max-w-full max-h-full object-contain mix-blend-multiply" />
-              </div>
+              </motion.div>
             ) : (
-              <div className="w-32 h-32 md:w-48 md:h-48 rounded-xl bg-muted border flex items-center justify-center shrink-0">
+              <motion.div 
+                animate={{ y: [0, -6, 0] }}
+                transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+                className="w-32 h-32 md:w-48 md:h-48 rounded-xl bg-muted border flex items-center justify-center shrink-0 animate-pulse"
+              >
                 <Target className="w-12 h-12 text-muted-foreground/30" />
-              </div>
+              </motion.div>
             )}
             
             <div className="flex-1 space-y-4">
@@ -231,7 +318,7 @@ export default function ResultPage() {
                 <ScoreBadge label="Confidence" value={analysis.aiConfidence ? analysis.aiConfidence * 100 : null} suffix="%" />
               </div>
             </div>
-
+ 
             {/* Main Sentiment Donut */}
             <div className="w-48 h-48 shrink-0 relative flex items-center justify-center bg-background/50 backdrop-blur rounded-full border border-border/50 shadow-xl print:hidden">
               <ResponsiveContainer width="100%" height="100%">
@@ -254,7 +341,7 @@ export default function ResultPage() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-3xl font-bold text-primary">{Math.round(analysis.positivePct)}%</span>
+                <span className="text-3xl font-bold text-primary"><CountUp value={analysis.positivePct} />%</span>
                 <span className="text-xs text-muted-foreground uppercase tracking-wider">Positive</span>
               </div>
             </div>
@@ -274,118 +361,133 @@ export default function ResultPage() {
           <TabsContent value="summary" className="space-y-6 print:block">
             <h2 className="text-2xl font-bold mb-4 print-only hidden">AI Summary</h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card className="glass-panel border-primary/20 md:col-span-2">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><Brain className="w-5 h-5 text-primary" /> The Bottom Line</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-lg leading-relaxed text-foreground/90">{analysis.overallSummary}</p>
-                </CardContent>
-              </Card>
-
-              <Card className="glass-panel border-green-500/20 bg-green-500/5">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-green-500"><TrendingUp className="w-5 h-5" /> Strengths</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="leading-relaxed">{analysis.strengths}</p>
-                  {posKeywords.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-4">
-                      {posKeywords.map((k,i) => <span key={i} className="px-2 py-1 rounded bg-green-500/20 text-green-500 text-xs font-mono">{k}</span>)}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="glass-panel border-destructive/20 bg-destructive/5">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-destructive"><TrendingDown className="w-5 h-5" /> Weaknesses</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="leading-relaxed">{analysis.weaknesses}</p>
-                  {negKeywords.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-4">
-                      {negKeywords.map((k,i) => <span key={i} className="px-2 py-1 rounded bg-destructive/20 text-destructive text-xs font-mono">{k}</span>)}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="glass-panel border-border/50 md:col-span-2">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><Briefcase className="w-5 h-5 text-secondary" /> Business Insights</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="leading-relaxed">{analysis.businessInsights}</p>
-                </CardContent>
-              </Card>
-
-              {analysis.mlDetails && (
-                <Card className="glass-panel border-primary/20 md:col-span-2">
+            <motion.div 
+              variants={containerVariants}
+              initial="hidden"
+              animate="show"
+              className="grid grid-cols-1 md:grid-cols-2 gap-6"
+            >
+              <motion.div variants={itemVariants} className="md:col-span-2">
+                <Card className="glass-panel border-primary/20">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-primary">
-                      <Activity className="w-5 h-5" /> Machine Learning Details
-                    </CardTitle>
-                    <CardDescription>
-                      Evaluation metrics and classification performance of the sentiment analyzer model.
-                    </CardDescription>
+                    <CardTitle className="flex items-center gap-2"><Brain className="w-5 h-5 text-primary" /> The Bottom Line</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50 col-span-2 md:col-span-4 flex flex-col md:flex-row md:items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-muted-foreground">Model Architecture</span>
-                        <span className="text-sm font-bold font-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
-                          {analysis.mlDetails.modelName}
-                        </span>
-                      </div>
-                      
-                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Training Accuracy</div>
-                        <div className="text-2xl font-bold font-mono text-foreground">
-                          {(analysis.mlDetails.trainingAccuracy * 100).toFixed(1)}%
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Testing Accuracy</div>
-                        <div className="text-2xl font-bold font-mono text-foreground">
-                          {(analysis.mlDetails.testingAccuracy * 100).toFixed(1)}%
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Precision</div>
-                        <div className="text-2xl font-bold font-mono text-foreground">
-                          {(analysis.mlDetails.precision * 100).toFixed(1)}%
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Recall</div>
-                        <div className="text-2xl font-bold font-mono text-foreground">
-                          {(analysis.mlDetails.recall * 100).toFixed(1)}%
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">F1 Score</div>
-                        <div className="text-2xl font-bold font-mono text-foreground">
-                          {(analysis.mlDetails.f1Score * 100).toFixed(1)}%
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-muted/30 border border-border/50 col-span-1 md:col-span-3">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Prediction Time (Latency)</div>
-                        <div className="text-2xl font-bold font-mono text-secondary">
-                          {analysis.mlDetails.predictionTimeMs} <span className="text-sm font-sans font-normal text-muted-foreground ml-1">ms</span>
-                        </div>
-                      </div>
-                    </div>
+                    <p className="text-lg leading-relaxed text-foreground/90">{analysis.overallSummary}</p>
                   </CardContent>
                 </Card>
+              </motion.div>
+
+              <motion.div variants={itemVariants}>
+                <Card className="glass-panel border-green-500/20 bg-green-500/5">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-green-500"><TrendingUp className="w-5 h-5" /> Strengths</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="leading-relaxed">{analysis.strengths}</p>
+                    {posKeywords.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        {posKeywords.map((k,i) => <span key={i} className="px-2 py-1 rounded bg-green-500/20 text-green-500 text-xs font-mono">{k}</span>)}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div variants={itemVariants}>
+                <Card className="glass-panel border-destructive/20 bg-destructive/5">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-destructive"><TrendingDown className="w-5 h-5" /> Weaknesses</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="leading-relaxed">{analysis.weaknesses}</p>
+                    {negKeywords.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        {negKeywords.map((k,i) => <span key={i} className="px-2 py-1 rounded bg-destructive/20 text-destructive text-xs font-mono">{k}</span>)}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div variants={itemVariants} className="md:col-span-2">
+                <Card className="glass-panel border-border/50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2"><Briefcase className="w-5 h-5 text-secondary" /> Business Insights</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="leading-relaxed">{analysis.businessInsights}</p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              {analysis.mlDetails && (
+                <motion.div variants={itemVariants} className="md:col-span-2">
+                  <Card className="glass-panel border-primary/20">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-primary">
+                        <Activity className="w-5 h-5" /> Machine Learning Details
+                      </CardTitle>
+                      <CardDescription>
+                        Evaluation metrics and classification performance of the sentiment analyzer model.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="p-3 rounded-lg bg-muted/30 border border-border/50 col-span-2 md:col-span-4 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-muted-foreground">Model Architecture</span>
+                          <span className="text-sm font-bold font-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
+                            {analysis.mlDetails.modelName}
+                          </span>
+                        </div>
+                        
+                        <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Training Accuracy</div>
+                          <div className="text-2xl font-bold font-mono text-foreground">
+                            {(analysis.mlDetails.trainingAccuracy * 100).toFixed(1)}%
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Testing Accuracy</div>
+                          <div className="text-2xl font-bold font-mono text-foreground">
+                            {(analysis.mlDetails.testingAccuracy * 100).toFixed(1)}%
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Precision</div>
+                          <div className="text-2xl font-bold font-mono text-foreground">
+                            {(analysis.mlDetails.precision * 100).toFixed(1)}%
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Recall</div>
+                          <div className="text-2xl font-bold font-mono text-foreground">
+                            {(analysis.mlDetails.recall * 100).toFixed(1)}%
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">F1 Score</div>
+                          <div className="text-2xl font-bold font-mono text-foreground">
+                            {(analysis.mlDetails.f1Score * 100).toFixed(1)}%
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-lg bg-muted/30 border border-border/50 col-span-1 md:col-span-3">
+                          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Prediction Time (Latency)</div>
+                          <div className="text-2xl font-bold font-mono text-secondary">
+                            {analysis.mlDetails.predictionTimeMs} <span className="text-sm font-sans font-normal text-muted-foreground ml-1">ms</span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
               )}
-            </div>
+            </motion.div>
           </TabsContent>
 
 
@@ -452,26 +554,39 @@ export default function ResultPage() {
           {/* TAB: PREDICTIONS */}
           <TabsContent value="predictions" className="space-y-6 print:block">
             <h2 className="text-2xl font-bold mb-4 print-only hidden">Predictions</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Card className="glass-panel border-secondary/30 bg-secondary/5 md:col-span-3">
-                <CardHeader>
-                  <CardTitle className="text-secondary text-xl">AI Recommendation</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xl font-medium">{analysis.predBuyRecommendation}</p>
-                </CardContent>
-              </Card>
+            <motion.div 
+              variants={containerVariants}
+              initial="hidden"
+              animate="show"
+              className="grid grid-cols-1 md:grid-cols-3 gap-6"
+            >
+              <motion.div variants={itemVariants} className="md:col-span-3">
+                <Card className="glass-panel border-secondary/30 bg-secondary/5 shadow-md">
+                  <CardHeader>
+                    <CardTitle className="text-secondary text-xl">AI Recommendation</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-xl font-medium">{analysis.predBuyRecommendation}</p>
+                  </CardContent>
+                </Card>
+              </motion.div>
               
-              <ScoreBadge label="Next Month Expected Rating" value={analysis.predExpectedRating} suffix="/5.0" className="py-8" />
-              <ScoreBadge label="Satisfaction Score" value={analysis.predSatisfactionScore} suffix="/100" className="py-8" />
-              <ScoreBadge label="Risk Factor" value={analysis.predRiskScore} suffix="/100" className="py-8 border-destructive/30" valueClass={analysis.predRiskScore && analysis.predRiskScore > 50 ? "text-destructive" : "text-yellow-500"} />
-            </div>
+              <motion.div variants={itemVariants}>
+                <ScoreBadge label="Next Month Expected Rating" value={analysis.predExpectedRating} suffix="/5.0" className="py-8" />
+              </motion.div>
+              <motion.div variants={itemVariants}>
+                <ScoreBadge label="Satisfaction Score" value={analysis.predSatisfactionScore} suffix="/100" className="py-8" />
+              </motion.div>
+              <motion.div variants={itemVariants}>
+                <ScoreBadge label="Risk Factor" value={analysis.predRiskScore} suffix="/100" className="py-8 border-destructive/30" valueClass={analysis.predRiskScore && analysis.predRiskScore > 50 ? "text-destructive" : "text-yellow-500"} />
+              </motion.div>
+            </motion.div>
           </TabsContent>
-
+ 
           {/* TAB: REVIEWS */}
           <TabsContent value="reviews" className="print:block no-print">
             <h2 className="text-2xl font-bold mb-4 print-only hidden">Raw Reviews</h2>
-            <Card className="glass-panel">
+            <Card className="glass-panel shadow-md">
               <CardContent className="p-0">
                 {reviewsLoading ? (
                   <div className="p-8 space-y-4">
@@ -480,8 +595,14 @@ export default function ResultPage() {
                   </div>
                 ) : reviewsData && reviewsData.items.length > 0 ? (
                   <div className="divide-y divide-border/50">
-                    {reviewsData.items.map((r) => (
-                      <div key={r.id} className="p-6 hover:bg-muted/10 transition-colors">
+                    {reviewsData.items.slice(0, visibleCount).map((r, i) => (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: Math.min(i, 6) * 0.05 }}
+                        key={r.id} 
+                        className="p-6 hover:bg-muted/10 transition-colors"
+                      >
                         <div className="flex items-center gap-3 mb-2">
                           <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${
                             r.sentiment === 'positive' ? 'bg-green-500/20 text-green-500' :
@@ -498,8 +619,16 @@ export default function ResultPage() {
                           {r.reviewDate && <span className="text-xs text-muted-foreground font-mono">{r.reviewDate}</span>}
                         </div>
                         <p className="text-foreground/90 leading-relaxed">{r.text}</p>
-                      </div>
+                      </motion.div>
                     ))}
+
+                    {/* Loader trigger ref element */}
+                    {visibleCount < reviewsData.items.length && (
+                      <div ref={loadMoreRef} className="py-8 flex justify-center items-center gap-2 text-muted-foreground text-sm border-t border-border/50">
+                        <Loader2 className="w-4.5 h-4.5 animate-spin text-primary" />
+                        <span>Loading more reviews...</span>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="p-12 text-center text-muted-foreground">No reviews available.</div>
@@ -533,7 +662,7 @@ function ScoreBadge({ label, value, suffix = "", isScore = false, className = ""
     <div className={`flex flex-col p-4 rounded-xl border border-border/50 bg-background/50 ${className}`}>
       <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{label}</span>
       <span className={`text-3xl font-bold font-mono ${colorClass}`}>
-        {typeof displayValue === 'number' ? (displayValue % 1 === 0 ? displayValue : displayValue.toFixed(1)) : displayValue}
+        <CountUp value={displayValue} />
         <span className="text-lg text-muted-foreground ml-1">{suffix}</span>
       </span>
     </div>
