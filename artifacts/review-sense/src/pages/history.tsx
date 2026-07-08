@@ -90,7 +90,7 @@ export default function HistoryPage() {
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0, transition: { duration: 0.2 } }}
-                      transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                      transition={{ type: "spring" as const, stiffness: 350, damping: 30 }}
                       className="overflow-hidden"
                     >
                       <div 

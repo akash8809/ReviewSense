@@ -117,7 +117,7 @@ export default function ResultPage() {
 
   const itemVariants = {
     hidden: { opacity: 0, y: 15 },
-    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 260, damping: 22 } }
+    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 260, damping: 22 } }
   };
 
   const handleShare = async () => {

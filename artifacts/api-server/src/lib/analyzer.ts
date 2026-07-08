@@ -2,6 +2,7 @@ import { getModel } from "./gemini";
 import { logger } from "./logger";
 import * as fs from "fs";
 import * as path from "path";
+import { chromium } from "playwright";
 
 export interface ReviewItem {
   review: string;
@@ -447,45 +448,13 @@ function detectBlock(html: string): string | null {
   return null;
 }
 
-/** Fetch product page HTML with a browser-like User-Agent. */
-async function fetchPageHtml(url: string): Promise<string | null> {
+function normalizeUrl(urlStr: string): string {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-          "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache",
-      },
-    });
-    clearTimeout(timeout);
-
-    // 2. Log the HTTP response status.
-    console.log(`[DEBUG] Scraper HTTP Status: ${res.status} for URL: ${url}`);
-    // 3. Log the final URL after redirects.
-    console.log(`[DEBUG] Scraper Final URL after redirects: ${res.url}`);
-
-    if (!res.ok) {
-      console.warn(`[DEBUG] Scraper fetch failed with status: ${res.status}`);
-      return null;
-    }
-    const contentType = res.headers.get("content-type") ?? "";
-    if (!contentType.includes("text/html")) {
-      console.warn(`[DEBUG] Scraper ignored non-HTML content type: ${contentType}`);
-      return null;
-    }
-    const text = await res.text();
-    // Log HTML length.
-    console.log(`[DEBUG] Scraper HTML length: ${text.length} characters`);
-    return text;
-  } catch (e) {
-    logger.warn({ err: e, url }, "Page fetch failed");
-    return null;
+    const urlObj = new URL(urlStr);
+    const cleanPath = urlObj.pathname.replace(/\/ref=.*$/, "");
+    return `${urlObj.origin}${cleanPath}`;
+  } catch {
+    return urlStr;
   }
 }
 
@@ -497,104 +466,386 @@ export async function extractProductInfo(url: string): Promise<{
   productPrice?: string;
   sampleReviews: ReviewItem[];
 }> {
-  const html = await fetchPageHtml(url);
+  const normalized = normalizeUrl(url);
+  console.log(`[DEBUG] Incoming URL: "${url}"`);
+  console.log(`[DEBUG] Normalized URL: "${normalized}"`);
 
-  // 4. Detect if Amazon returned: CAPTCHA, Robot Check, Access Denied, Sign In page, or Empty HTML.
-  if (!html) {
-    console.error("[ERROR] Amazon product could not be scraped. Empty HTML or fetch failed.");
-    throw new Error("Amazon product could not be scraped. Amazon blocked the request or no reviews were extracted.");
-  }
+  const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+  const extraHeaders = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1"
+  };
 
-  const blockReason = detectBlock(html);
-  if (blockReason) {
-    console.error(`[ERROR] Amazon product could not be scraped. Block detected: ${blockReason}`);
-    throw new Error("Amazon product could not be scraped. Amazon blocked the request or no reviews were extracted.");
-  }
+  console.log(`[DEBUG] User-Agent sent: "${userAgent}"`);
+  console.log(`[DEBUG] Headers sent:`, JSON.stringify(extraHeaders, null, 2));
 
-  const extracted = extractPageText(html);
-  const pageContext = extracted.text;
-  const scrapedImageUrl = extracted.imageUrl;
-  
-  // Log metadata extracted from regex
-  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const regexTitle = titleMatch ? stripHtml(titleMatch[1]) : "";
-  console.log(`[DEBUG] Scraper HTML title found: "${regexTitle}"`);
-  console.log(`[DEBUG] Scraper HTML image found: "${scrapedImageUrl}"`);
-
-  // Prompt Gemini to extract detailed product info and reviews
-  const prompt = `You are a product data extractor. A user submitted this e-commerce URL for review analysis:
-URL: ${url}
-
-Here is the actual scraped page content:
-
-=== SCRAPED PAGE CONTENT ===
-${pageContext}
-===========================
-
-From the content above, extract the exact product details and generate 20 realistic, SPECIFIC customer reviews for THIS product.
-Reviews must reflect this product's actual features, typical use cases, and common complaints — NOT a generic product.
-Mix: ~60% positive (4-5★), ~20% neutral (3★), ~20% negative (1-2★). Vary lengths from 1 to 4 sentences.
-
-Return JSON:
-{
-  "productName": "exact product name from the page",
-  "productBrand": "brand or manufacturer",
-  "productCategory": "product category",
-  "productPrice": "$XX.XX or null",
-  "reviews": [
-    {"review": "...", "rating": 5, "date": "2024-06-15"},
-    ... 20 total items
-  ]
-}`;
-
+  let browser;
   try {
-    const raw = await callGemini(prompt);
-    const data = JSON.parse(raw);
+    browser = await chromium.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-blink-features=AutomationControlled"
+      ]
+    });
 
-    const productName = data.productName ? data.productName.trim() : "";
-    const productImageUrl = scrapedImageUrl || undefined;
-    const reviews = Array.isArray(data.reviews) ? data.reviews : [];
+    const context = await browser.newContext({
+      userAgent,
+      extraHTTPHeaders: extraHeaders,
+      viewport: { width: 1280, height: 800 },
+      locale: "en-US",
+      timezoneId: "America/New_York"
+    });
 
-    // 5. Log: Product title, Product image, Rating, Number of reviews, Number of extracted review texts.
-    console.log(`[DEBUG] Extracted productName: "${productName}"`);
-    console.log(`[DEBUG] Extracted productImageUrl: "${productImageUrl}"`);
-    console.log(`[DEBUG] Extracted reviews count: ${reviews.length}`);
+    const page = await context.newPage();
+    
+    // Hide Automation Webdriver Flag
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined
+      });
+    });
+    
+    // Track redirects
+    let redirectCount = 0;
+    page.on("response", (res) => {
+      const status = res.status();
+      if (status >= 300 && status < 400) {
+        redirectCount++;
+      }
+    });
 
-    // 6. Print the first 3 extracted reviews.
-    if (reviews.length > 0) {
+    // Establish a real browser session by navigating to the home page first
+    console.log("[DEBUG] Navigating to Amazon home page to establish session cookies...");
+    try {
+      await page.goto("https://www.amazon.com/", {
+        waitUntil: "domcontentloaded",
+        timeout: 20000
+      });
+      await page.waitForTimeout(1500);
+    } catch (err) {
+      console.warn("[DEBUG] Initial home page navigation timed out or failed, continuing directly...", err);
+    }
+
+    const asinMatch = normalized.match(/\/dp\/([A-Z0-9]{10})/i) || normalized.match(/\/gp\/product\/([A-Z0-9]{10})/i);
+    let successfullyLoaded = false;
+    let targetAsin = "";
+
+    if (asinMatch) {
+      targetAsin = asinMatch[1];
+      const searchUrl = `${new URL(normalized).origin}/s?k=${targetAsin}`;
+      console.log(`[DEBUG] ASIN "${targetAsin}" detected. Trying stealth search entry: ${searchUrl}`);
+      try {
+        const searchResponse = await page.goto(searchUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 25000
+        });
+
+        if (searchResponse && searchResponse.status() === 200) {
+          const searchHtml = await page.content();
+          if (!detectBlock(searchHtml)) {
+            // Find EXACT link containing the target ASIN on the search page case-insensitively
+            const exactProductHref = await page.evaluate((asin) => {
+              const doc = (globalThis as any).document;
+              const anchors = Array.from(doc.querySelectorAll('a')) as any[];
+              const match = anchors.find(a => {
+                const href = a.href || '';
+                return href.toLowerCase().includes(`/dp/${asin.toLowerCase()}`) || 
+                       href.toLowerCase().includes(`/gp/product/${asin.toLowerCase()}`);
+              });
+              return match ? match.href : null;
+            }, targetAsin);
+
+            if (exactProductHref) {
+              console.log(`[DEBUG] Found exact target ASIN product link on search page: ${exactProductHref}`);
+              await page.goto(exactProductHref, { waitUntil: "domcontentloaded", timeout: 25000 });
+              successfullyLoaded = true;
+            } else {
+              console.warn("[DEBUG] Exact ASIN link not found on search results page. Clicking first listing instead...");
+              const linkSelector = 'a.a-link-normal.s-underline-text.s-underline-link-text.s-link-style.a-text-normal';
+              const hasLink = await page.$(linkSelector);
+              if (hasLink) {
+                await Promise.all([
+                  page.click(linkSelector),
+                  page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 25000 })
+                ]);
+                successfullyLoaded = true;
+              }
+            }
+          } else {
+            console.warn("[DEBUG] Search page blocked by CAPTCHA, skipping stealth search entry.");
+          }
+        }
+      } catch (err) {
+        console.warn("[DEBUG] Stealth search entry failed, falling back to direct navigation.", err);
+      }
+    }
+
+    if (!successfullyLoaded) {
+      console.log(`[DEBUG] Navigating directly to URL: ${normalized}`);
+      const response = await page.goto(normalized, {
+        waitUntil: "domcontentloaded",
+        timeout: 25000
+      });
+
+      if (!response) {
+        console.error("[ERROR] Amazon product could not be scraped. Empty response from Playwright.");
+        throw new Error("Amazon product could not be scraped. Empty response from browser.");
+      }
+
+      const status = response.status();
+      const finalUrl = response.url();
+      console.log(`[DEBUG] Response Status: ${status}`);
+      console.log(`[DEBUG] Final URL after redirects: ${finalUrl}`);
+    }
+
+    const html = await page.content();
+    console.log(`[DEBUG] Final loaded URL: ${page.url()}`);
+    console.log(`[DEBUG] Loaded Page HTML size: ${html.length} characters`);
+
+    // CAPTCHA / Bot detection
+    const blockReason = detectBlock(html);
+    if (blockReason) {
+      console.error(`[ERROR] Block detected: ${blockReason}`);
+      console.log(`[DEBUG] Blocked HTML (First 1000 characters):\n${html.slice(0, 1000)}`);
+      throw new Error(`Amazon product could not be scraped. Amazon blocked the request: ${blockReason}`);
+    }
+
+    // Scroll directly to the customer reviews section to trigger lazy widget loading
+    const reviewsSection = await page.$("#customerReviews");
+    if (reviewsSection) {
+      console.log("[DEBUG] Scrolling to customer reviews section...");
+      await reviewsSection.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(1500);
+      // Trigger scroll event
+      await page.evaluate(() => {
+        window.scrollBy(0, 100);
+        window.scrollBy(0, -50);
+      });
+      await page.waitForTimeout(1500);
+    } else {
+      console.log("[DEBUG] #customerReviews wrapper not found, doing progressive scroll...");
+      await page.evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight * 0.4);
+      });
+      await page.waitForTimeout(1500);
+      await page.evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight * 0.75);
+      });
+      await page.waitForTimeout(1500);
+    }
+
+    console.log("[DEBUG] Waiting for review containers to be attached in DOM...");
+    try {
+      await page.waitForSelector('div[data-hook="review"], .review, .a-section.review', { state: "attached", timeout: 15000 });
+      console.log("[DEBUG] Review containers attached successfully!");
+    } catch (e) {
+      console.warn("[DEBUG] Timeout waiting for review containers to attach in DOM.", e);
+    }
+
+    const extracted = await page.evaluate(() => {
+      const doc = (globalThis as any).document;
+      // 1. Title
+      const titleEl = doc.querySelector("#productTitle") || doc.querySelector("#title") || doc.querySelector(".qa-title-text");
+      const productName = titleEl ? titleEl.textContent.trim() : "";
+
+      // 2. Brand
+      const brandEl = doc.querySelector("#bylineInfo") || doc.querySelector(".po-brand .a-span9") || doc.querySelector("#brand");
+      const productBrand = brandEl ? brandEl.textContent.replace(/^Brand:\s*/i, "").trim() : undefined;
+
+      // 3. Category
+      const categoryEl = doc.querySelector("#wayfinding-breadcrumbs_container") || doc.querySelector("#showing-breadcrumbs_div") || doc.querySelector(".wayfinding-breadcrumbs");
+      const productCategory = categoryEl ? categoryEl.textContent.replace(/\s+/g, " ").trim() : undefined;
+
+      // 4. Price
+      const priceEl = doc.querySelector(".a-price .a-offscreen") || doc.querySelector("#priceblock_ourprice") || doc.querySelector(".priceBlockBuyingPriceString");
+      const productPrice = priceEl ? priceEl.textContent.trim() : undefined;
+
+      // 5. Image URL
+      const imgEl = doc.querySelector("#landingImage") || doc.querySelector("#main-image") || doc.querySelector("#imgBlkFront") || doc.querySelector("#ebooksImgBlkFront");
+      const productImageUrl = imgEl ? imgEl.getAttribute("src") : undefined;
+
+      // 6. Average Product Rating
+      const ratingAvgEl = doc.querySelector("span[data-hook='rating-out-of-text']") || doc.querySelector(".a-icon-alt");
+      const ratingAvgText = ratingAvgEl ? ratingAvgEl.textContent.trim() : "";
+
+      // 7. Review Items
+      const reviewContainers = doc.querySelectorAll('div[data-hook="review"], .review, .a-section.review');
+      const reviews: Array<{ review: string; rating?: number | null; date?: string | null }> = [];
+
+      reviewContainers.forEach((container: any) => {
+        const bodyEl = container.querySelector('[data-hook="review-body"], [data-hook="reviewText"], [data-hook="reviewRichContentContainer"], .review-text-content');
+        let text = bodyEl ? bodyEl.textContent.trim() : "";
+        text = text
+          .replace("Brief content visible, double tap to read full content.", "")
+          .replace("Full content visible, double tap to read brief content.", "")
+          .trim();
+        if (!text) return;
+
+        // Rating
+        const starEl = container.querySelector('i[data-hook="review-star-rating"], .review-rating');
+        let ratingValue: number | null = null;
+        if (starEl) {
+          const classMatch = starEl.className.match(/a-star-(\d)/);
+          if (classMatch) {
+            ratingValue = parseInt(classMatch[1], 10);
+          } else {
+            const altText = starEl.querySelector(".a-icon-alt")?.textContent || "";
+            const numMatch = altText.match(/(\d(\.\d)?)/);
+            if (numMatch) {
+              ratingValue = parseFloat(numMatch[1]);
+            }
+          }
+        }
+
+        // Date
+        const dateEl = container.querySelector('span[data-hook="review-date"], .review-date');
+        let dateVal: string | null = null;
+        if (dateEl) {
+          dateVal = dateEl.textContent.trim();
+        }
+
+        reviews.push({
+          review: text,
+          rating: ratingValue,
+          date: dateVal
+        });
+      });
+
+      return {
+        productName,
+        productBrand,
+        productCategory,
+        productPrice,
+        productImageUrl,
+        ratingAvgText,
+        reviews,
+        containersCount: reviewContainers.length
+      };
+    });
+
+    const finalLoadedUrl = page.url();
+    const loadedAsinMatch = finalLoadedUrl.match(/\/dp\/([A-Z0-9]{10})/i) || finalLoadedUrl.match(/\/gp\/product\/([A-Z0-9]{10})/i);
+    const resolvedAsin = loadedAsinMatch ? loadedAsinMatch[1] : targetAsin;
+
+    // Fallback: If no reviews found on main page, try the reviews page directly
+    if (extracted.reviews.length === 0 && resolvedAsin) {
+      console.log(`[DEBUG] No reviews found on product details page. Navigating to reviews page for ASIN ${resolvedAsin}...`);
+      const reviewsUrl = `${new URL(normalized).origin}/product-reviews/${resolvedAsin}`;
+      console.log(`[DEBUG] Loading reviews URL: ${reviewsUrl}`);
+      try {
+        const revResponse = await page.goto(reviewsUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+        console.log(`[DEBUG] Reviews Page Status: ${revResponse?.status()}`);
+        await page.waitForTimeout(2500);
+
+        const reviewsHtml = await page.content();
+        console.log(`[DEBUG] Reviews Page HTML Size: ${reviewsHtml.length} characters`);
+        const revBlock = detectBlock(reviewsHtml);
+        if (revBlock) {
+          console.warn(`[DEBUG] Reviews Page Blocked: ${revBlock}`);
+        } else {
+          const reviewsExtracted = await page.evaluate(() => {
+            const doc = (globalThis as any).document;
+            const reviewContainers = doc.querySelectorAll('div[data-hook="review"], .review, .a-section.review');
+            const reviews: Array<{ review: string; rating?: number | null; date?: string | null }> = [];
+
+            reviewContainers.forEach((container: any) => {
+              const bodyEl = container.querySelector('[data-hook="review-body"], [data-hook="reviewText"], [data-hook="reviewRichContentContainer"], .review-text-content');
+              let text = bodyEl ? bodyEl.textContent.trim() : "";
+              text = text
+                .replace("Brief content visible, double tap to read full content.", "")
+                .replace("Full content visible, double tap to read brief content.", "")
+                .trim();
+              if (!text) return;
+
+              const starEl = container.querySelector('i[data-hook="review-star-rating"], .review-rating');
+              let ratingValue: number | null = null;
+              if (starEl) {
+                const classMatch = starEl.className.match(/a-star-(\d)/);
+                if (classMatch) {
+                  ratingValue = parseInt(classMatch[1], 10);
+                } else {
+                  const altText = starEl.querySelector(".a-icon-alt")?.textContent || "";
+                  const numMatch = altText.match(/(\d(\.\d)?)/);
+                  if (numMatch) ratingValue = parseFloat(numMatch[1]);
+                }
+              }
+
+              const dateEl = container.querySelector('span[data-hook="review-date"], .review-date');
+              let dateVal: string | null = null;
+              if (dateEl) dateVal = dateEl.textContent.trim();
+
+              reviews.push({ review: text, rating: ratingValue, date: dateVal });
+            });
+
+            return { reviews, containersCount: reviewContainers.length };
+          });
+
+          console.log(`[DEBUG] Reviews Page Review Containers Found: ${reviewsExtracted.containersCount}`);
+          console.log(`[DEBUG] Reviews Page Real Reviews Extracted count: ${reviewsExtracted.reviews.length}`);
+
+          extracted.reviews = reviewsExtracted.reviews;
+          extracted.containersCount = reviewsExtracted.containersCount;
+        }
+      } catch (err) {
+        console.warn("[DEBUG] Error fetching fallback reviews page:", err);
+      }
+    }
+
+    console.log(`[DEBUG] Scraper Product Title Found: "${extracted.productName}"`);
+    console.log(`[DEBUG] Scraper Brand Found: "${extracted.productBrand || 'N/A'}"`);
+    console.log(`[DEBUG] Scraper Image URL Found: "${extracted.productImageUrl || 'N/A'}"`);
+    console.log(`[DEBUG] Scraper Rating Info: "${extracted.ratingAvgText || 'N/A'}"`);
+    console.log(`[DEBUG] Review Containers Found: ${extracted.containersCount}`);
+    console.log(`[DEBUG] Real Reviews Extracted count: ${extracted.reviews.length}`);
+
+    // Print first 3 reviews for verification
+    if (extracted.reviews.length > 0) {
       console.log("[DEBUG] First 3 extracted reviews:");
-      reviews.slice(0, 3).forEach((r: any, idx: number) => {
-        console.log(`  Review #${idx + 1}: Rating ${r.rating} - "${r.review}"`);
+      extracted.reviews.slice(0, 3).forEach((r, idx) => {
+        console.log(`  Review #${idx + 1}: Rating ${r.rating} - Date "${r.date}" - "${r.review.slice(0, 100)}..."`);
       });
     }
 
-    // 7. Validate extraction. If productName, reviews, or productImageUrl is missing, stop analysis.
-    // Ensure we do not accept generic placeholder names.
-    if (!productName || productName.toLowerCase().includes("product from") || productName.toLowerCase().includes("product") && productName.toLowerCase().includes("amazon") || productName === "www.amazon.in Product" || productName === "www.amazon.com Product") {
-      console.error(`[ERROR] Validation failed: productName is missing, generic, or invalid ("${productName}")`);
-      throw new Error("Amazon product could not be scraped. Amazon blocked the request or no reviews were extracted.");
+    // Validation
+    if (!extracted.productName || extracted.productName.toLowerCase().includes("product from") || (extracted.productName.toLowerCase().includes("product") && extracted.productName.toLowerCase().includes("amazon")) || extracted.productName === "www.amazon.in Product" || extracted.productName === "www.amazon.com Product") {
+      console.error(`[ERROR] Validation failed: productName is missing, generic, or invalid ("${extracted.productName}")`);
+      throw new Error(`Amazon product could not be scraped: Title validation failed ("${extracted.productName}")`);
     }
 
-    if (reviews.length === 0) {
+    if (extracted.reviews.length === 0) {
       console.error("[ERROR] Validation failed: no reviews extracted.");
-      throw new Error("Amazon product could not be scraped. Amazon blocked the request or no reviews were extracted.");
+      throw new Error("Amazon product could not be scraped: Zero reviews found on page DOM selectors.");
     }
 
-    if (!productImageUrl) {
+    if (!extracted.productImageUrl) {
       console.error("[ERROR] Validation failed: productImageUrl is missing.");
-      throw new Error("Amazon product could not be scraped. Amazon blocked the request or no reviews were extracted.");
+      throw new Error("Amazon product could not be scraped: Image selector failed.");
     }
 
-    return {
-      productName,
-      productBrand: data.productBrand ?? undefined,
-      productImageUrl,
-      productCategory: data.productCategory ?? undefined,
-      productPrice: data.productPrice ?? undefined,
-      sampleReviews: reviews,
+    const payload = {
+      productName: extracted.productName,
+      productBrand: extracted.productBrand ?? undefined,
+      productImageUrl: extracted.productImageUrl,
+      productCategory: extracted.productCategory ?? undefined,
+      productPrice: extracted.productPrice ?? undefined,
+      sampleReviews: extracted.reviews,
     };
+
+    console.log("[DEBUG] Final payload returned by scraper:", JSON.stringify(payload, null, 2));
+
+    return payload;
+
   } catch (e) {
-    console.error("[ERROR] Exception in extractProductInfo pipeline:", e);
-    throw new Error("Amazon product could not be scraped. Amazon blocked the request or no reviews were extracted.");
+    console.error("[ERROR] Exception in Playwright scraping pipeline:", e);
+    throw new Error(`Amazon product could not be scraped. Reason: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
   }
 }

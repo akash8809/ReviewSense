@@ -50,7 +50,7 @@ function AnalysisColumn({ id }: { id: number }) {
 
   const itemVariants = {
     hidden: { opacity: 0, y: 12 },
-    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 260, damping: 22 } }
+    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 260, damping: 22 } }
   };
 
   if (isLoading) return (

@@ -102,16 +102,19 @@ export default function AnalyzePage() {
 
   // Watch polling state changes
   useEffect(() => {
+    let redirectTimer: NodeJS.Timeout | null = null;
     if (analysis) {
       if (analysis.status === 'completed') {
         toast({ title: "Analysis Complete", description: "Insights generated successfully!" });
-        const redirectTimer = setTimeout(() => setLocation(`/result/${analysis.id}`), 1200);
-        return () => clearTimeout(redirectTimer);
+        redirectTimer = setTimeout(() => setLocation(`/result/${analysis.id}`), 1200);
       } else if (analysis.status === 'failed') {
         toast({ variant: "destructive", title: "Analysis Failed", description: analysis.errorMessage || "Something went wrong during processing." });
         setPollingId(null);
       }
     }
+    return () => {
+      if (redirectTimer) clearTimeout(redirectTimer);
+    };
   }, [analysis, setLocation, toast]);
 
   const handleUrlSubmit = (e: React.FormEvent) => {
@@ -205,7 +208,7 @@ export default function AnalyzePage() {
                       className="h-full bg-gradient-to-r from-primary to-secondary"
                       initial={{ width: "10%" }}
                       animate={{ width: `${progressPct}%` }}
-                      transition={{ type: "spring", stiffness: 80, damping: 15 }}
+                      transition={{ type: "spring" as const, stiffness: 80, damping: 15 }}
                     />
                   </div>
 
