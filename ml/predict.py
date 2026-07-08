@@ -28,7 +28,7 @@ def load_model():
     model = joblib.load(MODEL_PATH)
     vectorizer = joblib.load(VECTORIZER_PATH)
 
-    print("✅ Model Loaded Successfully")
+    print("Model Loaded Successfully")
 
 
 @app.on_event("startup")
@@ -89,6 +89,15 @@ def predict(request: PredictRequest):
             confidences.append(
                 round(float(max(probability)), 4)
             )
+
+        # Temporary Debug Logs
+        print(f"[DEBUG] TF-IDF shape: {X.shape}")
+        for i, (orig, clean, pred, prob) in enumerate(zip(request.reviews, cleaned_reviews, predictions, probabilities)):
+            print(f"[DEBUG] Review #{i}:")
+            print(f"  Original text: {orig}")
+            print(f"  Cleaned text:  {clean}")
+            print(f"  Raw Model Pred: {pred}")
+            print(f"  Predict Proba: {prob.tolist()}")
 
         return PredictResponse(
             results=predictions.tolist(),

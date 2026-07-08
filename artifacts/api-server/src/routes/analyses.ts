@@ -375,6 +375,15 @@ async function runAnalysis(
 ): Promise<void> {
   const result = await analyzeReviews(productName, reviews, analysisId);
 
+  // Temporary debug logs
+  console.log(`[DEBUG] Storing analysis in database (ID: ${analysisId}):`);
+  console.log(`  positivePct: ${result.positivePct}`);
+  console.log(`  negativePct: ${result.negativePct}`);
+  console.log(`  neutralPct: ${result.neutralPct}`);
+  console.log(`  avgRating: ${result.avgRating}`);
+  console.log(`  sentimentScore: ${result.sentimentScore}`);
+  console.log(`  aiConfidence: ${result.aiConfidence}`);
+
   await db
     .update(analysesTable)
     .set({

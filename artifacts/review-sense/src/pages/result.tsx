@@ -228,7 +228,7 @@ export default function ResultPage() {
               <div className="flex flex-wrap gap-4 mt-6">
                 <ScoreBadge label="AI Score" value={analysis.sentimentScore} isScore />
                 <ScoreBadge label="Avg Rating" value={analysis.avgRating} suffix="/5.0" />
-                <ScoreBadge label="Confidence" value={analysis.aiConfidence} suffix="%" />
+                <ScoreBadge label="Confidence" value={analysis.aiConfidence ? analysis.aiConfidence * 100 : null} suffix="%" />
               </div>
             </div>
 
@@ -522,8 +522,10 @@ function ScoreBadge({ label, value, suffix = "", isScore = false, className = ""
   let colorClass = valueClass || "text-foreground";
   
   if (isScore) {
-    if (value > 70) colorClass = "text-green-500";
-    else if (value < 40) colorClass = "text-destructive";
+    // Map from [-1, 1] to [0, 100]
+    displayValue = Math.round(((value + 1) / 2) * 100 * 10) / 10;
+    if (displayValue > 70) colorClass = "text-green-500";
+    else if (displayValue < 40) colorClass = "text-destructive";
     else colorClass = "text-yellow-500";
   }
 

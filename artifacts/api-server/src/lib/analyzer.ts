@@ -149,6 +149,15 @@ export async function analyzeReviews(
       let score = 0;
       if (sentiment === "positive") score = conf;
       else if (sentiment === "negative") score = -conf;
+
+      // Temporary debug logs
+      console.log(`[DEBUG] analyzer.ts sentiment mapping:`);
+      console.log(`  Original review: "${reviews[i].review}"`);
+      console.log(`  Raw prediction: "${res}"`);
+      console.log(`  Mapped sentiment: "${sentiment}"`);
+      console.log(`  Confidence: ${conf}`);
+      console.log(`  Score: ${score}`);
+
       return {
         sentiment,
         score,
