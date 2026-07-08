@@ -13,10 +13,18 @@ export default function SharedPage() {
 
   useEffect(() => {
     if (!token) return;
-    fetch(`/api/public/analyses/${token}`)
-      .then((r) => {
-        if (!r.ok) throw new Error("This link is invalid or has been removed.");
-        return r.json();
+    const backendUrl = "https://reviewsense-api-pu7k.onrender.com";
+    const url = `${backendUrl}/api/shared/${token}`;
+    console.log("Share URL:", url);
+
+    fetch(url)
+      .then(async (response) => {
+        if (!response.ok) {
+          const errText = await response.text();
+          console.log("Error response text:", errText);
+          throw new Error("This link is invalid or has been removed.");
+        }
+        return response.json();
       })
       .then(setAnalysis)
       .catch((e) => setError(e.message))

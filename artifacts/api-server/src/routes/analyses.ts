@@ -458,6 +458,22 @@ router.get("/public/analyses/:token", async (req, res): Promise<void> => {
   res.json(formatAnalysis(analysis as unknown as Record<string, unknown>));
 });
 
+// GET /shared/:token — no auth required
+router.get("/shared/:token", async (req, res): Promise<void> => {
+  const { token } = req.params;
+  console.log("Incoming share token:", token);
+  const [analysis] = await db.select().from(analysesTable)
+    .where(sql`${analysesTable.shareToken} = ${token}`);
+  console.log("Analysis found:", analysis);
+  if (!analysis) {
+    res.setHeader("Content-Type", "application/json");
+    res.status(404).json({ error: "Shared analysis not found or link is invalid." });
+    return;
+  }
+  res.setHeader("Content-Type", "application/json");
+  res.json(formatAnalysis(analysis as unknown as Record<string, unknown>));
+});
+
 // POST /analyses/:id/reanalyze — re-run analysis with same product URL
 router.post("/analyses/:id/reanalyze", requireAuth, async (req, res): Promise<void> => {
   const params = GetAnalysisParams.safeParse(req.params);
