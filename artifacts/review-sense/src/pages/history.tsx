@@ -56,8 +56,7 @@ export default function HistoryPage() {
   };
 
   return (
-    <SidebarLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Analysis History</h1>
@@ -145,12 +144,18 @@ export default function HistoryPage() {
               </div>
             ) : (
               <div className="p-16 text-center text-muted-foreground flex flex-col items-center">
-                <Search className="w-12 h-12 mb-4 opacity-20" />
-                <p className="text-lg font-medium text-foreground mb-1">No results found</p>
-                <p>Try adjusting your search or start a new analysis.</p>
-                {search && (
-                  <Button variant="link" className="mt-2 text-primary" onClick={() => setSearch("")}>
-                    Clear search
+                <div className="w-12 h-12 rounded-xl bg-muted border border-border flex items-center justify-center mb-4 text-muted-foreground/60 shadow-sm animate-pulse">
+                  <Search className="w-6 h-6" />
+                </div>
+                <p className="text-sm font-semibold text-foreground mb-1">No reports found</p>
+                <p className="text-xs text-muted-foreground max-w-sm mb-4">Try adjusting your search query, or start a new analysis to populate your history.</p>
+                {search ? (
+                  <Button variant="outline" size="sm" onClick={() => setSearch("")} className="h-8">
+                    Clear Search
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={() => setLocation("/analyze")} className="h-8 shadow-md">
+                    Start Analysis
                   </Button>
                 )}
               </div>
@@ -190,6 +195,5 @@ export default function HistoryPage() {
           </div>
         )}
       </div>
-    </SidebarLayout>
   );
 }

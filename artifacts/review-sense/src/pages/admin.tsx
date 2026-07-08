@@ -28,8 +28,7 @@ export default function AdminPage() {
   });
 
   return (
-    <SidebarLayout>
-      <div className="space-y-8">
+    <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-destructive">Admin Console</h1>
           <p className="text-muted-foreground mt-1">Platform-wide statistics and user management.</p>
@@ -86,7 +85,6 @@ export default function AdminPage() {
           </CardContent>
         </Card>
       </div>
-    </SidebarLayout>
   );
 }
 

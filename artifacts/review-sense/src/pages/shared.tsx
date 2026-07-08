@@ -70,21 +70,19 @@ export default function SharedPage() {
   }, [token]);
 
   if (loading) return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="w-full max-w-2xl p-8 space-y-4">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-64 w-full rounded-2xl" />
-        <Skeleton className="h-40 w-full rounded-2xl" />
-      </div>
+    <div className="w-full max-w-2xl mx-auto p-8 space-y-4 animate-pulse">
+      <Skeleton className="h-10 w-48 rounded bg-muted/40" />
+      <Skeleton className="h-64 w-full rounded-2xl bg-muted/40" />
+      <Skeleton className="h-40 w-full rounded-2xl bg-muted/40" />
     </div>
   );
 
   if (error || !analysis) return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-8">
-      <Activity className="w-16 h-16 text-primary mb-4" />
-      <h2 className="text-2xl font-bold mb-2">Link not found</h2>
-      <p className="text-muted-foreground mb-6">{error ?? "This shared analysis doesn't exist."}</p>
-      <Link href="/" className="text-primary underline">Go to ReviewSense</Link>
+    <div className="flex flex-col items-center justify-center text-center p-8 max-w-md mx-auto space-y-4">
+      <Activity className="w-12 h-12 text-primary animate-bounce" />
+      <h2 className="text-xl font-bold">Link not found</h2>
+      <p className="text-sm text-muted-foreground">{error ?? "This shared analysis doesn't exist."}</p>
+      <Link href="/" className="text-primary underline text-sm">Go to ReviewSense</Link>
     </div>
   );
 
@@ -117,27 +115,12 @@ export default function SharedPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground relative overflow-hidden">
-      {/* Background orbs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-[15%] left-[10%] w-[300px] h-[300px] bg-primary/10 rounded-full blur-[100px] animate-orb-1 animate-pulse-glow" />
-        <div className="absolute bottom-[20%] right-[10%] w-[350px] h-[350px] bg-secondary/8 rounded-full blur-[120px] animate-orb-2" />
-      </div>
-
-      {/* Top bar */}
-      <nav className="border-b border-border/50 px-6 h-14 flex items-center justify-between relative z-10 glass-panel">
-        <Link href="/" className="flex items-center gap-2 text-primary font-bold text-lg">
-          <Activity className="w-5 h-5" /> ReviewSense
-        </Link>
-        <span className="text-xs text-muted-foreground px-3 py-1 rounded-full border border-border">Shared Report</span>
-      </nav>
-
-      <motion.div 
-        variants={containerVariants}
-        initial="hidden"
-        animate="show"
-        className="max-w-4xl mx-auto px-6 py-10 space-y-8 relative z-10"
-      >
+    <motion.div 
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+      className="max-w-4xl mx-auto space-y-8"
+    >
         {/* Hero */}
         <motion.div variants={itemVariants} className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background p-8 shadow-lg">
           <div className="flex flex-col md:flex-row gap-6 items-start">
@@ -258,6 +241,5 @@ export default function SharedPage() {
           </Link>
         </motion.div>
       </motion.div>
-    </div>
   );
 }

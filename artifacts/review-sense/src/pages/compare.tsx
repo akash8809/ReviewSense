@@ -167,8 +167,7 @@ export default function ComparePage() {
   const ready = idA !== null && idB !== null;
 
   return (
-    <SidebarLayout>
-      <div className="space-y-8">
+    <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Compare Products</h1>
           <p className="text-muted-foreground mt-1">Pick two completed analyses to see them side by side.</p>
@@ -191,13 +190,14 @@ export default function ComparePage() {
             <AnalysisColumn id={idB!} />
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-            <GitCompareArrows className="w-16 h-16 mb-4 opacity-20" />
-            <p className="text-lg font-medium text-foreground">Select two products above</p>
-            <p className="text-sm mt-1">Their analysis results will appear here side by side.</p>
+          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground text-center border border-dashed border-border/40 rounded-2xl bg-muted/10 p-8">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-4 text-primary shadow-[0_0_20px_-5px_rgba(147,51,234,0.3)] animate-pulse">
+              <GitCompareArrows className="w-8 h-8" />
+            </div>
+            <p className="text-lg font-semibold text-foreground mb-1">Select two analyses to compare</p>
+            <p className="text-xs text-muted-foreground max-w-sm">Choose completed analyses from the dropdowns above to contrast metrics and verdicts side by side.</p>
           </div>
         )}
       </div>
-    </SidebarLayout>
   );
 }

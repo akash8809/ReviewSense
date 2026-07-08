@@ -14,8 +14,7 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
 
   return (
-    <SidebarLayout>
-      <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-4xl mx-auto space-y-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
           <p className="text-muted-foreground mt-1">Manage your account preferences and app settings.</p>
@@ -114,6 +113,5 @@ export default function SettingsPage() {
           </Card>
         </div>
       </div>
-    </SidebarLayout>
   );
 }
