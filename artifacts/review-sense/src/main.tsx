@@ -1,10 +1,16 @@
 import { createRoot } from "react-dom/client";
-import { setBaseUrl } from "@workspace/api-client-react";
-
 import App from "./App";
 import "./index.css";
 
-// Production API URL
+import {
+    setAuthTokenGetter,
+    setBaseUrl,
+} from "@workspace/api-client-react";
+
+// Backend URL
 setBaseUrl("https://reviewsense-api-pu7k.onrender.com");
+
+// JWT token
+setAuthTokenGetter(() => localStorage.getItem("rs_token"));
 
 createRoot(document.getElementById("root")!).render(<App />);

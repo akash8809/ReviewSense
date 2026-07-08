@@ -359,7 +359,11 @@ export async function customFetch<T = unknown>(
     requestUrl.startsWith("/api") ||
     (typeof location !== "undefined" &&
       (requestUrl.startsWith(location.origin + "/api") ||
-        requestUrl.startsWith(location.origin + "/api/")));
+        requestUrl.startsWith(location.origin + "/api/"))) ||
+    (typeof _baseUrl === "string" && (
+      requestUrl.startsWith(_baseUrl + "/api/") ||
+      requestUrl.startsWith(_baseUrl + "/api")
+    ));
 
   let token: string | null = null;
   if (_authTokenGetter && !headers.has("authorization")) {
