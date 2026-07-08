@@ -5,6 +5,7 @@ import NotFound from '@/pages/not-found';
 import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 import { ThemeProvider } from '@/components/theme-provider';
 import { motion, AnimatePresence } from 'framer-motion';
+import { SidebarLayout } from '@/components/sidebar-layout';
 
 // Pages
 import LandingPage from './pages/landing';
@@ -22,10 +23,11 @@ import SharedPage from './pages/shared';
 const queryClient = new QueryClient();
 
 const pageVariants = {
-  initial: { opacity: 0, y: 12 },
+  initial: { opacity: 0, x: -15, scale: 0.98 },
   animate: { 
     opacity: 1, 
-    y: 0, 
+    x: 0, 
+    scale: 1, 
     transition: { 
       duration: 0.35, 
       ease: [0.16, 1, 0.3, 1], // easeOutExpo
@@ -33,7 +35,8 @@ const pageVariants = {
   },
   exit: { 
     opacity: 0, 
-    y: -12, 
+    x: 15, 
+    scale: 0.98, 
     transition: { 
       duration: 0.25, 
       ease: [0.7, 0, 0.84, 0], // easeInExpo
@@ -52,6 +55,28 @@ function PageTransition({ children }: { children: React.ReactNode }) {
     >
       {children}
     </motion.div>
+  );
+}
+
+function AppLayout({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  
+  // Public pages: Landing, Login, Signup
+  const isPublicRoute = ["/", "/login", "/signup"].includes(location);
+  
+  if (isPublicRoute) {
+    return (
+      <div className="min-h-screen w-full relative overflow-hidden bg-background gradient-mesh">
+        <div className="noise-overlay" />
+        {children}
+      </div>
+    );
+  }
+  
+  return (
+    <SidebarLayout>
+      {children}
+    </SidebarLayout>
   );
 }
 
@@ -107,7 +132,9 @@ function App() {
       <ThemeProvider defaultTheme="dark" storageKey="rs_theme">
         <TooltipProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-            <Router />
+            <AppLayout>
+              <Router />
+            </AppLayout>
           </WouterRouter>
           <Toaster />
         </TooltipProvider>

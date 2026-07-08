@@ -211,20 +211,55 @@ export default function ResultPage() {
 
   if (analysisLoading) {
     return (
-      <SidebarLayout>
-        <div className="space-y-6">
-          <Skeleton className="h-10 w-48" />
-          <Card className="glass-panel"><CardContent className="h-64 flex items-center justify-center"><Activity className="w-12 h-12 text-primary animate-spin" /></CardContent></Card>
+      <div className="space-y-8 animate-pulse">
+        {/* Header Actions skeleton */}
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-10 w-24 rounded-lg bg-muted/40" />
+          <div className="flex gap-2">
+            <Skeleton className="h-10 w-16 rounded-lg bg-muted/40" />
+            <Skeleton className="h-10 w-24 rounded-lg bg-muted/40" />
+            <Skeleton className="h-10 w-28 rounded-lg bg-muted/40" />
+          </div>
         </div>
-      </SidebarLayout>
+
+        {/* Hero Card skeleton */}
+        <Card className="glass-panel border-primary/20 bg-muted/5">
+          <CardContent className="p-8 flex flex-col md:flex-row gap-8 items-start">
+            <Skeleton className="w-32 h-32 md:w-48 md:h-48 rounded-xl bg-muted/40 shrink-0" />
+            <div className="flex-1 space-y-4">
+              <Skeleton className="h-4 w-24 rounded bg-muted/40" />
+              <Skeleton className="h-10 w-3/4 rounded-lg bg-muted/40" />
+              <Skeleton className="h-5 w-1/2 rounded bg-muted/40" />
+              <div className="flex flex-wrap gap-4 mt-6">
+                <Skeleton className="h-20 w-32 rounded-xl bg-muted/40" />
+                <Skeleton className="h-20 w-32 rounded-xl bg-muted/40" />
+                <Skeleton className="h-20 w-32 rounded-xl bg-muted/40" />
+              </div>
+            </div>
+            <Skeleton className="w-48 h-48 rounded-full bg-muted/40 shrink-0 hidden md:block" />
+          </CardContent>
+        </Card>
+
+        {/* Content sections skeleton */}
+        <div className="space-y-6">
+          <Skeleton className="h-10 w-full rounded-xl bg-muted/40" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="glass-panel"><CardContent className="p-6 space-y-4"><Skeleton className="h-6 w-1/3 bg-muted/40" /><Skeleton className="h-24 w-full bg-muted/40" /></CardContent></Card>
+            <Card className="glass-panel"><CardContent className="p-6 space-y-4"><Skeleton className="h-6 w-1/3 bg-muted/40" /><Skeleton className="h-24 w-full bg-muted/40" /></CardContent></Card>
+          </div>
+        </div>
+      </div>
     );
   }
 
   if (!analysis) {
     return (
-      <SidebarLayout>
-        <div className="p-12 text-center text-destructive">Failed to load analysis.</div>
-      </SidebarLayout>
+      <div className="p-12 text-center text-destructive flex flex-col items-center">
+        <Activity className="w-12 h-12 mb-4 animate-bounce" />
+        <p className="font-semibold text-lg">Failed to load analysis.</p>
+        <p className="text-sm text-muted-foreground mt-1 mb-6">The analysis report could not be found or retrieved.</p>
+        <Button onClick={() => setLocation("/dashboard")}>Back to Dashboard</Button>
+      </div>
     );
   }
 
@@ -253,8 +288,7 @@ export default function ResultPage() {
   })).reverse(); // 5 to 1
 
   return (
-    <SidebarLayout>
-      <div id="pdf-content" className="space-y-8 print:space-y-4">
+    <div id="pdf-content" className="space-y-8 print:space-y-4">
         {/* Header Actions */}
         <div className="flex items-center justify-between no-print">
           <Button variant="ghost" className="text-muted-foreground" asChild>
@@ -631,14 +665,19 @@ export default function ResultPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="p-12 text-center text-muted-foreground">No reviews available.</div>
+                  <div className="p-16 text-center text-muted-foreground flex flex-col items-center">
+                    <div className="w-12 h-12 rounded-xl bg-muted border border-border flex items-center justify-center mb-4 text-muted-foreground/60 shadow-sm animate-pulse">
+                      <FileText className="w-6 h-6" />
+                    </div>
+                    <p className="text-sm font-semibold text-foreground mb-1">No reviews found</p>
+                    <p className="text-xs text-muted-foreground max-w-sm">This product currently does not have any processed reviews.</p>
+                  </div>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
       </div>
-    </SidebarLayout>
   );
 }
 

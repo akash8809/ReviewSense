@@ -127,13 +127,12 @@ export default function DashboardPage() {
   };
 
   return (
-    <SidebarLayout>
-      <motion.div 
-        variants={containerVariants}
-        initial="hidden"
-        animate="show"
-        className="space-y-8"
-      >
+    <motion.div 
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+      className="space-y-8"
+    >
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
@@ -268,9 +267,12 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="p-12 text-center text-muted-foreground flex flex-col items-center">
-                  <Activity className="w-12 h-12 mb-4 opacity-20" />
-                  <p>No analyses yet. Start by analyzing a product!</p>
-                  <Button variant="outline" className="mt-4" onClick={() => setLocation("/analyze")}>
+                  <div className="w-12 h-12 rounded-xl bg-muted border border-border flex items-center justify-center mb-4 text-muted-foreground/60 shadow-sm animate-pulse">
+                    <Activity className="w-6 h-6" />
+                  </div>
+                  <p className="text-sm font-semibold text-foreground mb-1">No analyses yet</p>
+                  <p className="text-xs text-muted-foreground max-w-sm mb-4">Start by submitting a product URL or raw CSV files to generate reports.</p>
+                  <Button variant="outline" size="sm" onClick={() => setLocation("/analyze")} className="h-8">
                     Create First Analysis
                   </Button>
                 </div>
@@ -318,15 +320,20 @@ export default function DashboardPage() {
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
-                  <BarChart className="w-10 h-10 mb-2 opacity-20" />
-                  <p className="text-sm">Run a few analyses to see your trend here</p>
+                <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-4 text-primary shadow-[0_0_15px_-3px_rgba(147,51,234,0.3)] animate-pulse">
+                    <BarChart className="w-6 h-6" />
+                  </div>
+                  <p className="text-sm font-semibold text-foreground mb-1">No activity data available yet</p>
+                  <p className="text-xs text-muted-foreground max-w-sm mb-4">Run analyses on product pages to track ratings and sentiments over time.</p>
+                  <Button size="sm" onClick={() => setLocation("/analyze")} className="h-8 shadow-md">
+                    Start First Analysis
+                  </Button>
                 </div>
               )}
             </CardContent>
           </Card>
         </motion.div>
       </motion.div>
-    </SidebarLayout>
   );
 }
