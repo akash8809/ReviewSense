@@ -53,6 +53,16 @@ export function formatAnalysis(a: Record<string, any>) {
     const precision = parseMetric("precision", "precision");
     const recall = parseMetric("recall", "recall");
     const f1Score = parseMetric("f1Score", "f1_score");
+
+    console.log("[DEBUG] formatAnalysis executed for analysis ID:", a.id);
+    console.log("[DEBUG] Absolute path resolved for metrics.json:", metricsPath);
+    console.log("[DEBUG] fs.existsSync(metricsPath) returns:", fs.existsSync(metricsPath));
+    console.log("[DEBUG] Entire parsed metrics object:", JSON.stringify(metrics, null, 2));
+    console.log("[DEBUG] Parsed metric - trainingAccuracy:", trainingAccuracy);
+    console.log("[DEBUG] Parsed metric - testingAccuracy:", testingAccuracy);
+    console.log("[DEBUG] Parsed metric - precision:", precision);
+    console.log("[DEBUG] Parsed metric - recall:", recall);
+    console.log("[DEBUG] Parsed metric - f1Score:", f1Score);
     
     let predictionTimeMs = 45.2;
     if (fs.existsSync(timesPath)) {
@@ -77,6 +87,8 @@ export function formatAnalysis(a: Record<string, any>) {
       f1Score,
       predictionTimeMs
     };
+
+    console.log("[DEBUG] Final mlDetails object immediately before return:", JSON.stringify(mlDetails, null, 2));
   } catch (err) {
     logger.warn({ err }, "Error reading ML metrics or prediction times from files");
   }
