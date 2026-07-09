@@ -173,7 +173,7 @@ metrics = {
     "confusion_matrix": cm.tolist(),
 }
 
-with open(os.path.join(BASE_DIR, "..", "metrics.json"), "w", encoding="utf-8") as f:
+with open(os.path.join(BASE_DIR, "metrics.json"), "w", encoding="utf-8") as f:
     json.dump(metrics, f, indent=4)
 
 print("\nSaved:")

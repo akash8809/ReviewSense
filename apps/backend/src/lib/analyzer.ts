@@ -5,14 +5,15 @@ import * as path from "path";
 import { chromium } from "playwright";
 
 function getMlServicePath(fileName: string): string {
+  const relativeSubpath = fileName === "metrics.json" ? path.join("training", fileName) : fileName;
   // If running from monorepo root
-  let p = path.join(process.cwd(), "apps", "ml-service", fileName);
+  let p = path.join(process.cwd(), "apps", "ml-service", relativeSubpath);
   if (fs.existsSync(p)) return p;
   // If running from apps/backend
-  p = path.join(process.cwd(), "..", "ml-service", fileName);
+  p = path.join(process.cwd(), "..", "ml-service", relativeSubpath);
   if (fs.existsSync(p)) return p;
   // Fallback
-  return path.join(process.cwd(), "apps", "ml-service", fileName);
+  return path.join(process.cwd(), "apps", "ml-service", relativeSubpath);
 }
 
 export interface ReviewItem {

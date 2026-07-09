@@ -8,14 +8,15 @@ import * as fs from "fs";
 import * as path from "path";
 
 function getMlServicePath(fileName: string): string {
+  const relativeSubpath = fileName === "metrics.json" ? path.join("training", fileName) : fileName;
   // If running from monorepo root
-  let p = path.join(process.cwd(), "apps", "ml-service", fileName);
+  let p = path.join(process.cwd(), "apps", "ml-service", relativeSubpath);
   if (fs.existsSync(p)) return p;
   // If running from apps/backend
-  p = path.join(process.cwd(), "..", "ml-service", fileName);
+  p = path.join(process.cwd(), "..", "ml-service", relativeSubpath);
   if (fs.existsSync(p)) return p;
   // Fallback
-  return path.join(process.cwd(), "apps", "ml-service", fileName);
+  return path.join(process.cwd(), "apps", "ml-service", relativeSubpath);
 }
 
 export function formatAnalysis(a: Record<string, any>) {
@@ -24,37 +25,57 @@ export function formatAnalysis(a: Record<string, any>) {
     const metricsPath = getMlServicePath("metrics.json");
     const timesPath = getMlServicePath("prediction_times.json");
     
-    let metrics: any = {
-      modelName: "TF-IDF + Logistic Regression",
-      trainingAccuracy: 1.0,
-      testingAccuracy: 1.0,
-      precision: 1.0,
-      recall: 1.0,
-      f1Score: 1.0
-    };
+    let metrics: any = null;
     
     if (fs.existsSync(metricsPath)) {
-      metrics = JSON.parse(fs.readFileSync(metricsPath, "utf-8"));
+      try {
+        metrics = JSON.parse(fs.readFileSync(metricsPath, "utf-8"));
+      } catch (e) {
+        logger.warn({ err: e }, `Failed to parse metrics file at ${metricsPath}`);
+      }
+    } else {
+      logger.warn(`Metrics file not found at ${metricsPath}`);
     }
+
+    const modelName = metrics?.modelName || metrics?.model_name || "TF-IDF + Logistic Regression";
+    
+    // Helper to safely parse metrics with camelCase/snake_case check and fallback to 0
+    const parseMetric = (camel: string, snake: string): number => {
+      if (!metrics) return 0;
+      const val = metrics[camel] !== undefined ? metrics[camel] : metrics[snake];
+      if (val === undefined || val === null) return 0;
+      const num = Number(val);
+      return Number.isNaN(num) ? 0 : num;
+    };
+
+    const trainingAccuracy = parseMetric("trainingAccuracy", "training_accuracy");
+    const testingAccuracy = parseMetric("testingAccuracy", "testing_accuracy");
+    const precision = parseMetric("precision", "precision");
+    const recall = parseMetric("recall", "recall");
+    const f1Score = parseMetric("f1Score", "f1_score");
     
     let predictionTimeMs = 45.2;
     if (fs.existsSync(timesPath)) {
-      const times = JSON.parse(fs.readFileSync(timesPath, "utf-8"));
-      if (times[String(a.id)] !== undefined) {
-        predictionTimeMs = times[String(a.id)];
-      } else if (a.reviewCount) {
-        predictionTimeMs = Math.round((Number(a.reviewCount) * 2.8) * 10) / 10;
+      try {
+        const times = JSON.parse(fs.readFileSync(timesPath, "utf-8"));
+        if (times[String(a.id)] !== undefined) {
+          predictionTimeMs = times[String(a.id)];
+        } else if (a.reviewCount) {
+          predictionTimeMs = Math.round((Number(a.reviewCount) * 2.8) * 10) / 10;
+        }
+      } catch (e) {
+        logger.warn({ err: e }, `Failed to parse prediction times at ${timesPath}`);
       }
     }
     
     mlDetails = {
-      modelName: metrics.modelName,
-      trainingAccuracy: metrics.trainingAccuracy,
-      testingAccuracy: metrics.testingAccuracy,
-      precision: metrics.precision,
-      recall: metrics.recall,
-      f1Score: metrics.f1Score,
-      predictionTimeMs: predictionTimeMs
+      modelName,
+      trainingAccuracy,
+      testingAccuracy,
+      precision,
+      recall,
+      f1Score,
+      predictionTimeMs
     };
   } catch (err) {
     logger.warn({ err }, "Error reading ML metrics or prediction times from files");
