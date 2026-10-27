@@ -381,9 +381,22 @@ export async function customFetch<T = unknown>(
   const response = await fetch(input, { ...init, method, headers });
 
   if (!response.ok) {
+    // Auto-clear stale token on 401 so users are forced to re-login with a fresh token
+    if (
+      response.status === 401 &&
+      isSameOriginApi &&
+      typeof localStorage !== "undefined"
+    ) {
+      localStorage.removeItem("rs_token");
+      localStorage.removeItem("rs_user");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("auth:expired"));
+      }
+    }
     const errorData = await parseErrorBody(response, method);
     throw new ApiError(response, errorData, requestInfo);
   }
 
   return (await parseSuccessBody(response, responseType, requestInfo)) as T;
 }
+

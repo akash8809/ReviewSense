@@ -24,9 +24,9 @@ export default defineConfig({
       "/api": {
         target:
           process.env.VITE_API_URL ||
-          "https://reviewsense-api-pu7k.onrender.com",
+          "http://localhost:3001",
         changeOrigin: true,
-        secure: true,
+        secure: false,
       },
     },
   },

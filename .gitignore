@@ -60,3 +60,11 @@ node_modules/
 dist/
 artifacts/**/node_modules/
 artifacts/**/dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+env/

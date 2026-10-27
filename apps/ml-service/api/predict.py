@@ -1,9 +1,18 @@
+import sys
 import os
 import re
 import joblib
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List
+
+# Ensure stdout and stderr support UTF-8 on Windows
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 app = FastAPI(title="ReviewSense Sentiment Classifier API")
 
@@ -91,13 +100,17 @@ def predict(request: PredictRequest):
             )
 
         # Temporary Debug Logs
-        print(f"[DEBUG] TF-IDF shape: {X.shape}")
-        for i, (orig, clean, pred, prob) in enumerate(zip(request.reviews, cleaned_reviews, predictions, probabilities)):
-            print(f"[DEBUG] Review #{i}:")
-            print(f"  Original text: {orig}")
-            print(f"  Cleaned text:  {clean}")
-            print(f"  Raw Model Pred: {pred}")
-            print(f"  Predict Proba: {prob.tolist()}")
+        try:
+            print(f"[DEBUG] TF-IDF shape: {X.shape}")
+            for i, (orig, clean, pred, prob) in enumerate(zip(request.reviews, cleaned_reviews, predictions, probabilities)):
+                safe_orig = orig.encode("ascii", errors="backslashreplace").decode("ascii")
+                print(f"[DEBUG] Review #{i}:")
+                print(f"  Original text: {safe_orig}")
+                print(f"  Cleaned text:  {clean}")
+                print(f"  Raw Model Pred: {pred}")
+                print(f"  Predict Proba: {prob.tolist()}")
+        except Exception as log_err:
+            pass
 
         return PredictResponse(
             results=predictions.tolist(),

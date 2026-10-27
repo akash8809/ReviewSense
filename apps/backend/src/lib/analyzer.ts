@@ -522,6 +522,16 @@ export async function extractProductInfo(url: string): Promise<{
       });
     });
     
+    // Abort heavy media, fonts, and images so the DOM content loads in 3-4s instead of 25s+
+    // Image URLs are still preserved in HTML attributes (src, data-old-hires)
+    await page.route("**/*", (route) => {
+      const type = route.request().resourceType();
+      if (["image", "media", "font"].includes(type)) {
+        return route.abort();
+      }
+      route.continue();
+    });
+
     // Track redirects
     let redirectCount = 0;
     page.on("response", (res) => {
@@ -531,36 +541,45 @@ export async function extractProductInfo(url: string): Promise<{
       }
     });
 
-    // Establish a real browser session by navigating to the home page first
-    console.log("[DEBUG] Navigating to Amazon home page to establish session cookies...");
-    try {
-      await page.goto("https://www.amazon.com/", {
-        waitUntil: "domcontentloaded",
-        timeout: 20000
-      });
-      await page.waitForTimeout(1500);
-    } catch (err) {
-      console.warn("[DEBUG] Initial home page navigation timed out or failed, continuing directly...", err);
-    }
-
+    const targetOrigin = new URL(normalized).origin;
     const asinMatch = normalized.match(/\/dp\/([A-Z0-9]{10})/i) || normalized.match(/\/gp\/product\/([A-Z0-9]{10})/i);
     let successfullyLoaded = false;
-    let targetAsin = "";
+    let targetAsin = asinMatch ? asinMatch[1] : "";
 
-    if (asinMatch) {
-      targetAsin = asinMatch[1];
-      const searchUrl = `${new URL(normalized).origin}/s?k=${targetAsin}`;
+    // 1. First attempt: Direct navigation (fast with resource aborting)
+    console.log(`[DEBUG] Navigating directly to URL: ${normalized}`);
+    try {
+      const response = await page.goto(normalized, {
+        waitUntil: "domcontentloaded",
+        timeout: 40000
+      });
+
+      if (response && response.status() === 200) {
+        const directHtml = await page.content();
+        if (!detectBlock(directHtml)) {
+          successfullyLoaded = true;
+          console.log(`[DEBUG] Direct navigation succeeded: Status 200`);
+        } else {
+          console.warn("[DEBUG] Direct navigation hit bot detection, will try search entry fallback.");
+        }
+      }
+    } catch (err) {
+      console.warn("[DEBUG] Direct navigation timed out or failed, trying search fallback...", err);
+    }
+
+    // 2. Fallback attempt: Stealth search entry if direct navigation failed or got blocked
+    if (!successfullyLoaded && targetAsin) {
+      const searchUrl = `${targetOrigin}/s?k=${targetAsin}`;
       console.log(`[DEBUG] ASIN "${targetAsin}" detected. Trying stealth search entry: ${searchUrl}`);
       try {
         const searchResponse = await page.goto(searchUrl, {
           waitUntil: "domcontentloaded",
-          timeout: 25000
+          timeout: 35000
         });
 
         if (searchResponse && searchResponse.status() === 200) {
           const searchHtml = await page.content();
           if (!detectBlock(searchHtml)) {
-            // Find EXACT link containing the target ASIN on the search page case-insensitively
             const exactProductHref = await page.evaluate((asin) => {
               const doc = (globalThis as any).document;
               const anchors = Array.from(doc.querySelectorAll('a')) as any[];
@@ -574,7 +593,7 @@ export async function extractProductInfo(url: string): Promise<{
 
             if (exactProductHref) {
               console.log(`[DEBUG] Found exact target ASIN product link on search page: ${exactProductHref}`);
-              await page.goto(exactProductHref, { waitUntil: "domcontentloaded", timeout: 25000 });
+              await page.goto(exactProductHref, { waitUntil: "domcontentloaded", timeout: 35000 });
               successfullyLoaded = true;
             } else {
               console.warn("[DEBUG] Exact ASIN link not found on search results page. Clicking first listing instead...");
@@ -583,36 +602,16 @@ export async function extractProductInfo(url: string): Promise<{
               if (hasLink) {
                 await Promise.all([
                   page.click(linkSelector),
-                  page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 25000 })
+                  page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 35000 })
                 ]);
                 successfullyLoaded = true;
               }
             }
-          } else {
-            console.warn("[DEBUG] Search page blocked by CAPTCHA, skipping stealth search entry.");
           }
         }
       } catch (err) {
-        console.warn("[DEBUG] Stealth search entry failed, falling back to direct navigation.", err);
+        console.warn("[DEBUG] Stealth search entry also failed:", err);
       }
-    }
-
-    if (!successfullyLoaded) {
-      console.log(`[DEBUG] Navigating directly to URL: ${normalized}`);
-      const response = await page.goto(normalized, {
-        waitUntil: "domcontentloaded",
-        timeout: 25000
-      });
-
-      if (!response) {
-        console.error("[ERROR] Amazon product could not be scraped. Empty response from Playwright.");
-        throw new Error("Amazon product could not be scraped. Empty response from browser.");
-      }
-
-      const status = response.status();
-      const finalUrl = response.url();
-      console.log(`[DEBUG] Response Status: ${status}`);
-      console.log(`[DEBUG] Final URL after redirects: ${finalUrl}`);
     }
 
     const html = await page.content();
@@ -750,7 +749,7 @@ export async function extractProductInfo(url: string): Promise<{
       const reviewsUrl = `${new URL(normalized).origin}/product-reviews/${resolvedAsin}`;
       console.log(`[DEBUG] Loading reviews URL: ${reviewsUrl}`);
       try {
-        const revResponse = await page.goto(reviewsUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+        const revResponse = await page.goto(reviewsUrl, { waitUntil: "domcontentloaded", timeout: 35000 });
         console.log(`[DEBUG] Reviews Page Status: ${revResponse?.status()}`);
         await page.waitForTimeout(2500);
 

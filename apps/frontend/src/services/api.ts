@@ -1,6 +1,5 @@
 export async function getSharedAnalysis(token: string) {
-  const backendUrl = "https://reviewsense-api-pu7k.onrender.com";
-  const url = `${backendUrl}/api/shared/${token}`;
+  const url = `/api/shared/${token}`;
   console.log("Share URL:", url);
   const response = await fetch(url);
   if (!response.ok) {

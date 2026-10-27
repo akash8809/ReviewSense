@@ -53,6 +53,17 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, isSharedRoute, setLocation]);
 
+  // Listen for stale/invalid token events fired by customFetch on 401 responses
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      clearAuth();
+      setLocation("/login");
+    };
+    window.addEventListener("auth:expired", handleAuthExpired);
+    return () => window.removeEventListener("auth:expired", handleAuthExpired);
+  }, [clearAuth, setLocation]);
+
+
   const [usage, setUsage] = useState<{ used: number; limit: number } | null>(null);
   useEffect(() => {
     if (isAuthenticated) {

@@ -7,8 +7,12 @@ import {
     setBaseUrl,
 } from "@workspace/api-client";
 
-// Backend URL
-setBaseUrl("https://reviewsense-api-pu7k.onrender.com");
+// Backend URL - use environment variable if set, otherwise null to use Vite local proxy
+if (import.meta.env.VITE_API_URL) {
+  setBaseUrl(import.meta.env.VITE_API_URL);
+} else {
+  setBaseUrl(null);
+}
 
 // JWT token
 setAuthTokenGetter(() => localStorage.getItem("rs_token"));
